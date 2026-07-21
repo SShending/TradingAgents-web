@@ -15,6 +15,9 @@ from tradingagents.agents.utils.agent_utils import (
     build_instrument_context,
     get_balance_sheet,
     get_cashflow,
+    get_fund_holdings,
+    get_fund_performance,
+    get_fund_profile,
     get_fundamentals,
     get_global_news,
     get_income_statement,
@@ -223,6 +226,9 @@ class TradingAgentsGraph:
                     get_balance_sheet,
                     get_cashflow,
                     get_income_statement,
+                    get_fund_profile,
+                    get_fund_holdings,
+                    get_fund_performance,
                 ]
             ),
         }
@@ -359,7 +365,13 @@ class TradingAgentsGraph:
             f"asset={asset_type}",
         ])
 
-    def propagate(self, company_name, trade_date, asset_type: str = "stock"):
+    def propagate(
+        self,
+        company_name,
+        trade_date,
+        asset_type: str = "stock",
+        benchmark_symbol: str | None = None,
+    ):
         """Run the trading agents graph for a company on a specific date.
 
         ``asset_type`` selects between the stock pipeline (default) and the
@@ -394,7 +406,12 @@ class TradingAgentsGraph:
                 logger.info("Starting fresh for %s on %s", company_name, trade_date)
 
         try:
-            return self._run_graph(company_name, trade_date, asset_type=asset_type)
+            return self._run_graph(
+                company_name,
+                trade_date,
+                asset_type=asset_type,
+                benchmark_symbol=benchmark_symbol,
+            )
         finally:
             if self._checkpointer_ctx is not None:
                 self._checkpointer_ctx.__exit__(None, None, None)
@@ -416,7 +433,13 @@ class TradingAgentsGraph:
             )
         return write_report_tree(final_state, ticker, save_path)
 
-    def _run_graph(self, company_name, trade_date, asset_type: str = "stock"):
+    def _run_graph(
+        self,
+        company_name,
+        trade_date,
+        asset_type: str = "stock",
+        benchmark_symbol: str | None = None,
+    ):
         """Execute the graph and write the resulting state to disk and memory log."""
         # Initialize state — inject memory log context for PM and the
         # deterministically resolved instrument identity for all agents.
@@ -428,6 +451,7 @@ class TradingAgentsGraph:
             asset_type=asset_type,
             past_context=past_context,
             instrument_context=instrument_context,
+            benchmark_symbol=benchmark_symbol or self._resolve_benchmark(company_name),
         )
         args = self.propagator.get_graph_args()
 

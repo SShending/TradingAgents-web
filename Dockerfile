@@ -1,3 +1,11 @@
+FROM node:22-slim AS web-builder
+
+WORKDIR /build/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
+
 FROM python:3.12-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -8,7 +16,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /build
 COPY . .
-RUN pip install --no-cache-dir .
+COPY --from=web-builder /build/web/dist ./web/dist
+RUN pip install --no-cache-dir ".[web]"
 
 FROM python:3.12-slim
 

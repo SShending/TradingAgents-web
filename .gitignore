@@ -218,6 +218,14 @@ __marimo__/
 # Cache
 **/data_cache/
 
+# Fund web workspace
+web/node_modules/
+web/dist/
+web/coverage/
+web/playwright-report/
+web/test-results/
+web/*.tsbuildinfo
+
 # Enterprise env file (secrets) and generated run reports
 .env.enterprise
 reports/

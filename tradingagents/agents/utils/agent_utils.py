@@ -1,4 +1,3 @@
-import functools
 import logging
 from collections.abc import Mapping
 from typing import Any
@@ -8,6 +7,11 @@ from langchain_core.messages import HumanMessage, RemoveMessage
 
 # Import tools from separate utility files
 from tradingagents.agents.utils.core_stock_tools import get_stock_data
+from tradingagents.agents.utils.fund_data_tools import (
+    get_fund_holdings,
+    get_fund_performance,
+    get_fund_profile,
+)
 from tradingagents.agents.utils.fundamental_data_tools import (
     get_balance_sheet,
     get_cashflow,
@@ -33,6 +37,9 @@ __all__ = [
     "get_balance_sheet",
     "get_cashflow",
     "get_income_statement",
+    "get_fund_profile",
+    "get_fund_holdings",
+    "get_fund_performance",
     "get_news",
     "get_global_news",
     "get_insider_transactions",
@@ -75,7 +82,9 @@ def _clean_identity_value(value: Any) -> str | None:
     return cleaned
 
 
-@functools.lru_cache(maxsize=256)
+_identity_cache: dict[str, dict[str, str]] = {}
+
+
 def resolve_instrument_identity(ticker: str) -> dict:
     """Resolve deterministic identity metadata (company name, sector, …) for a ticker.
 
@@ -95,8 +104,11 @@ def resolve_instrument_identity(ticker: str) -> dict:
     """
     from tradingagents.dataflows.symbol_utils import normalize_symbol
 
+    canonical = normalize_symbol(ticker)
+    if canonical in _identity_cache:
+        return dict(_identity_cache[canonical])
     try:
-        info = yf.Ticker(normalize_symbol(ticker)).info or {}
+        info = yf.Ticker(canonical).info or {}
     except Exception as exc:  # noqa: BLE001 — fail open, never block the run
         logger.debug("Could not resolve instrument identity for %s: %s", ticker, exc)
         return {}
@@ -111,12 +123,18 @@ def resolve_instrument_identity(ticker: str) -> dict:
         ("sector", "sector"),
         ("industry", "industry"),
         ("exchange", "exchange"),
+        ("currency", "currency"),
         ("quoteType", "quote_type"),
     ):
         value = _clean_identity_value(info.get(source_key))
         if value:
             identity[target_key] = value
+    if identity:
+        _identity_cache[canonical] = dict(identity)
     return identity
+
+
+resolve_instrument_identity.cache_clear = _identity_cache.clear  # type: ignore[attr-defined]
 
 
 def build_instrument_context(
@@ -132,7 +150,8 @@ def build_instrument_context(
     than pattern-matching the price chart to a wrong one (#814).
     """
     is_crypto = asset_type == "crypto"
-    instrument_label = "asset" if is_crypto else "instrument"
+    is_fund = asset_type == "fund"
+    instrument_label = "asset" if is_crypto else "fund" if is_fund else "instrument"
     context = (
         f"The {instrument_label} to analyze is `{ticker}`. "
         "Use this exact ticker in every tool call, report, and recommendation, "
@@ -143,7 +162,7 @@ def build_instrument_context(
     if identity:
         name = identity.get("company_name") or identity.get("name")
         if name:
-            details.append(f"{'Name' if is_crypto else 'Company'}: {name}")
+            details.append(f"{'Company' if asset_type == 'stock' else 'Name'}: {name}")
         sector, industry = identity.get("sector"), identity.get("industry")
         if sector and industry:
             details.append(f"Business classification: {sector} / {industry}")
@@ -165,6 +184,11 @@ def build_instrument_context(
         context += (
             " Treat it as a crypto asset rather than a company, and do not "
             "assume company fundamentals are available."
+        )
+    elif is_fund:
+        context += (
+            " Treat it as an investment fund. Use fund profile, holdings, allocation, "
+            "cost, and price-based evidence; do not request company financial statements."
         )
     return context
 
@@ -212,6 +236,3 @@ def create_msg_delete():
         return {"messages": removal_operations + [placeholder]}
 
     return delete_messages
-
-
-

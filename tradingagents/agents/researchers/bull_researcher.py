@@ -17,18 +17,25 @@ def create_bull_researcher(llm):
         fundamentals_report = state["fundamentals_report"]
         instrument_context = get_instrument_context_from_state(state)
         asset_type = state.get("asset_type", "stock")
-        target_label = "stock" if asset_type == "stock" else "asset"
+        target_label = "fund" if asset_type == "fund" else "stock" if asset_type == "stock" else "asset"
         fundamentals_label = (
             "Company fundamentals report"
             if asset_type == "stock"
+            else "Fund analysis report"
+            if asset_type == "fund"
             else "Asset fundamentals report (may be unavailable for crypto)"
+        )
+        evidence_focus = (
+            "Focus on costs, diversification, holdings quality, benchmark-relative results, "
+            "tracking, drawdown, and liquidity."
+            if asset_type == "fund"
+            else "Focus on growth opportunities, financial health, competitive position, and valuation."
         )
 
         prompt = f"""You are a Bull Analyst advocating for investing in the {target_label}. Your task is to build a strong, evidence-based case emphasizing growth potential, competitive advantages, and positive market indicators. Leverage the provided research and data to address concerns and counter bearish arguments effectively.
 
 Key points to focus on:
-- Growth Potential: Highlight the company's market opportunities, revenue projections, and scalability.
-- Competitive Advantages: Emphasize factors like unique products, strong branding, or dominant market positioning.
+- Evidence Focus: {evidence_focus}
 - Positive Indicators: Use financial health, industry trends, and recent positive news as evidence.
 - Bear Counterpoints: Critically analyze the bear argument with specific data and sound reasoning, addressing concerns thoroughly and showing why the bull perspective holds stronger merit.
 - Engagement: Present your argument in a conversational style, engaging directly with the bear analyst's points and debating effectively rather than just listing data.
