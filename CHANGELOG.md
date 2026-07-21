@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Breaking changes within the 0.x line are called out explicitly.
 
+## [Unreleased]
+
+### Added
+
+- **Fund Mode.** Shared stock/fund/crypto resolution classifies Yahoo ETFs and
+  mutual funds, normalizes best-effort fund profile and holdings data, and
+  computes date-bounded return, volatility, drawdown, correlation, tracking,
+  and premium/discount metrics in Python.
+- **Local analysis workspace.** An optional FastAPI job/SSE/export API and a
+  responsive React workspace expose instrument resolution, live agent status,
+  reports, charts, warnings, cancellation, and Markdown downloads without
+  sending provider secrets to the browser.
+
+### Changed
+
+- Fund runs retain the compatible `fundamentals_report` state key while binding
+  only fund-valid tools and displaying Fund Analysis labels. Stock and crypto
+  routing remains compatible.
+
 ## [0.3.1] — 2026-07-05
 
 Correctness and stability patch: data look-ahead, graph-router crash-safety,

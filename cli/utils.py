@@ -6,6 +6,7 @@ from dotenv import find_dotenv, set_key
 from rich.console import Console
 
 from cli.models import AnalystType, AssetType
+from tradingagents.instruments import is_crypto_symbol
 from tradingagents.llm_clients.api_key_env import get_api_key_env
 from tradingagents.llm_clients.model_catalog import get_model_options
 
@@ -19,9 +20,6 @@ ANALYST_ORDER = [
     ("News Analyst", AnalystType.NEWS),
     ("Fundamentals Analyst", AnalystType.FUNDAMENTALS),
 ]
-
-CRYPTO_SUFFIXES = ("-USD", "-USDT", "-USDC", "-BTC", "-ETH")
-
 
 def is_valid_ticker_input(value: str) -> bool:
     """Whether a ticker entry is acceptable (charset + length).
@@ -81,8 +79,7 @@ def normalize_ticker_symbol(ticker: str) -> str:
 def detect_asset_type(ticker: str) -> AssetType:
     """Classify on the canonical symbol so e.g. BTCUSD and BTC-USDT both read as
     crypto (#981/#982), matching what the data path will actually fetch."""
-    canonical = normalize_ticker_symbol(ticker)
-    if canonical.endswith(CRYPTO_SUFFIXES):
+    if is_crypto_symbol(ticker):
         return AssetType.CRYPTO
     return AssetType.STOCK
 

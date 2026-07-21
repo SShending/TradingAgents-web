@@ -1,0 +1,27 @@
+import { analysisReducer, initialAnalysisState } from './analysisReducer'
+import type { AnalysisEvent } from './types'
+
+function event(id: number, type: string, data: Record<string, unknown> = {}): AnalysisEvent {
+  return { id, type, data, job_id: 'job', timestamp: '2026-07-22T00:00:00Z' }
+}
+
+describe('analysisReducer', () => {
+  it('handles ordered lifecycle events and ignores duplicate ids', () => {
+    let state = analysisReducer(initialAnalysisState, { type: 'created', jobId: 'job' })
+    state = analysisReducer(state, { type: 'event', event: event(1, 'analysis.started') })
+    state = analysisReducer(state, { type: 'event', event: event(2, 'agent.started', { agent: 'Market Analyst' }) })
+    state = analysisReducer(state, { type: 'event', event: event(3, 'agent.completed', { agent: 'Market Analyst' }) })
+    const duplicate = analysisReducer(state, { type: 'event', event: event(3, 'analysis.failed', { message: 'wrong' }) })
+    expect(duplicate.status).toBe('running')
+    expect(duplicate.agents['Market Analyst']).toBe('completed')
+  })
+
+  it('stores reports, final result, failure, and cancellation states', () => {
+    let state = analysisReducer(initialAnalysisState, { type: 'event', event: event(1, 'report.updated', { section: 'fundamentals_report', content: 'Fund report' }) })
+    expect(state.reports.fundamentals_report).toBe('Fund report')
+    state = analysisReducer(state, { type: 'event', event: event(2, 'analysis.completed', { result: { asset_type: 'fund' } }) })
+    expect(state.status).toBe('completed')
+    expect(state.result?.asset_type).toBe('fund')
+    expect(analysisReducer(state, { type: 'event', event: event(3, 'analysis.cancelled') }).status).toBe('cancelled')
+  })
+})

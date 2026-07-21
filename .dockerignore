@@ -11,5 +11,9 @@ build
 dist
 results
 eval_results
+web/node_modules
+web/dist
+web/test-results
+web/playwright-report
 Dockerfile
 docker-compose.yml

@@ -20,6 +20,7 @@ from rich.table import Table
 from rich.text import Text
 
 from cli.announcements import display_announcements, fetch_announcements
+from cli.models import AssetType
 from cli.stats_handler import StatsCallbackHandler
 from cli.utils import (
     ask_anthropic_effort,
@@ -41,6 +42,7 @@ from cli.utils import (
     select_research_depth,
     select_shallow_thinking_agent,
 )
+from tradingagents.agents.utils.agent_utils import resolve_instrument_identity
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.graph.analyst_execution import (
     AnalystWallTimeTracker,
@@ -114,13 +116,14 @@ class MessageBuffer:
         self.selected_analysts = []
         self._processed_message_ids = set()
 
-    def init_for_analysis(self, selected_analysts):
+    def init_for_analysis(self, selected_analysts, asset_type="stock"):
         """Initialize agent status and report sections based on selected analysts.
 
         Args:
             selected_analysts: List of analyst type strings (e.g., ["market", "news"])
         """
         self.selected_analysts = [a.lower() for a in selected_analysts]
+        self.asset_type = asset_type
 
         # Build agent_status dynamically
         self.agent_status = {}
@@ -205,7 +208,9 @@ class MessageBuffer:
                 "market_report": "Market Analysis",
                 "sentiment_report": "Social Sentiment",
                 "news_report": "News Analysis",
-                "fundamentals_report": "Fundamentals Analysis",
+                "fundamentals_report": (
+                    "Fund Analysis" if self.asset_type == "fund" else "Fundamentals Analysis"
+                ),
                 "investment_plan": "Research Team Decision",
                 "trader_investment_plan": "Trading Team Plan",
                 "final_trade_decision": "Portfolio Management Decision",
@@ -238,7 +243,7 @@ class MessageBuffer:
                 )
             if self.report_sections.get("fundamentals_report"):
                 report_parts.append(
-                    f"### Fundamentals Analysis\n{self.report_sections['fundamentals_report']}"
+                    f"### {'Fund Analysis' if self.asset_type == 'fund' else 'Fundamentals Analysis'}\n{self.report_sections['fundamentals_report']}"
                 )
 
         # Research Team Reports
@@ -555,6 +560,18 @@ def get_user_selections():
     )
     selected_ticker = get_ticker()
     asset_type = detect_asset_type(selected_ticker)
+    if asset_type != AssetType.CRYPTO:
+        try:
+            from tradingagents.instruments import resolve_instrument
+
+            asset_type = resolve_instrument(
+                selected_ticker,
+                identity_resolver=resolve_instrument_identity,
+                price_probe=lambda _symbol: True,
+            ).asset_type
+        except Exception:
+            # Identity is best effort in the CLI; preserve the stock fallback.
+            pass
     # Only announce when it's not the default stock path, to avoid printing
     # "stock" on every run.
     if asset_type.value != "stock":
@@ -779,7 +796,10 @@ def display_complete_report(final_state):
     if final_state.get("news_report"):
         analysts.append(("News Analyst", final_state["news_report"]))
     if final_state.get("fundamentals_report"):
-        analysts.append(("Fundamentals Analyst", final_state["fundamentals_report"]))
+        analysts.append((
+            "Fund Analysis" if final_state.get("asset_type") == "fund" else "Fundamentals Analyst",
+            final_state["fundamentals_report"],
+        ))
     if analysts:
         console.print(Panel("[bold]I. Analyst Team Reports[/bold]", border_style="cyan"))
         for title, content in analysts:
@@ -1025,7 +1045,7 @@ def run_analysis(checkpoint: bool | None = None):
     )
 
     # Initialize message buffer with selected analysts
-    message_buffer.init_for_analysis(selected_analyst_keys)
+    message_buffer.init_for_analysis(selected_analyst_keys, selections["asset_type"])
 
     # Track start time for elapsed display
     start_time = time.time()

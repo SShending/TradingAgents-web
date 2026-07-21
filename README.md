@@ -167,6 +167,48 @@ Launch the interactive CLI:
 tradingagents          # installed command
 python -m cli.main     # alternative: run directly from source
 ```
+
+### Fund Mode and Local Web Workspace
+
+TradingAgents recognizes Yahoo Finance `ETF` and `MUTUALFUND` instruments as
+funds and uses fund profile, holdings, allocation, deterministic performance,
+drawdown, and benchmark metrics instead of company financial statements. Stock
+and crypto analysis paths remain available with the same symbols and CLI entry
+points.
+
+Install the optional backend and locked frontend dependencies:
+
+```bash
+python -m pip install -e ".[dev,web]"
+cd web && npm ci && cd ..
+```
+
+Start the API and frontend in separate terminals. Both bind locally by default:
+
+```bash
+TRADINGAGENTS_WEB_DEMO=1 python -m uvicorn tradingagents.web.app:app --host 127.0.0.1 --port 8000
+```
+
+```bash
+cd web
+npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+Open `http://127.0.0.1:5173`. Remove `TRADINGAGENTS_WEB_DEMO=1` for live Yahoo
+and LLM analysis after configuring the selected provider key. The browser never
+receives provider secrets. Web jobs and results are held in memory and are lost
+when the API process restarts.
+
+Fund field coverage varies by Yahoo instrument. Missing profile, holdings, NAV,
+or allocation fields are shown as unavailable rather than zero. Fund profile
+and holdings are generally the latest available metadata, not historical
+point-in-time records; backdated analyses label this explicitly and only use
+price observations through the selected analysis date. Mainland China
+off-exchange public funds outside Yahoo coverage are not supported in this
+release.
+
+The web interface, like the rest of TradingAgents, is for research only and is
+not investment advice or a trade-execution system.
 You will see a screen where you can select your desired tickers, analysis date, LLM provider, research depth, and more.
 
 ### Markets and tickers

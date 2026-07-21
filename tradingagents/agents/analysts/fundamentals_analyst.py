@@ -3,6 +3,9 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from tradingagents.agents.utils.agent_utils import (
     get_balance_sheet,
     get_cashflow,
+    get_fund_holdings,
+    get_fund_performance,
+    get_fund_profile,
     get_fundamentals,
     get_income_statement,
     get_instrument_context_from_state,
@@ -15,19 +18,32 @@ def create_fundamentals_analyst(llm):
         current_date = state["trade_date"]
         instrument_context = get_instrument_context_from_state(state)
 
-        tools = [
-            get_fundamentals,
-            get_balance_sheet,
-            get_cashflow,
-            get_income_statement,
-        ]
-
-        system_message = (
-            "You are a researcher tasked with analyzing fundamental information over the past week about a company. Please write a comprehensive report of the company's fundamental information such as financial documents, company profile, basic company financials, and company financial history to gain a full view of the company's fundamental information to inform traders. Make sure to include as much detail as possible. Provide specific, actionable insights with supporting evidence to help traders make informed decisions."
-            + " Make sure to append a Markdown table at the end of the report to organize key points in the report, organized and easy to read."
-            + " Use the available tools: `get_fundamentals` for comprehensive company analysis, `get_balance_sheet`, `get_cashflow`, and `get_income_statement` for specific financial statements."
-            + get_language_instruction(),
-        )
+        if state.get("asset_type") == "fund":
+            tools = [get_fund_profile, get_fund_holdings, get_fund_performance]
+            system_message = (
+                "You are a fund analyst. Produce a Fund Analysis report using only normalized "
+                "profile, holdings, allocation, price-performance, benchmark, and news evidence. "
+                "Keep unavailable provider fields as N/A with their reason. Do not calculate "
+                "metrics, infer missing fields, or describe latest metadata as historical. Discuss "
+                "costs, diversification, concentration, benchmark behavior, volatility, drawdown, "
+                "tracking quality, liquidity evidence when available, and material risks. End with "
+                "a compact Markdown evidence table. Use only `get_fund_profile`, "
+                "`get_fund_holdings`, and `get_fund_performance`."
+                + get_language_instruction()
+            )
+        else:
+            tools = [
+                get_fundamentals,
+                get_balance_sheet,
+                get_cashflow,
+                get_income_statement,
+            ]
+            system_message = (
+                "You are a researcher tasked with analyzing fundamental information over the past week about a company. Please write a comprehensive report of the company's fundamental information such as financial documents, company profile, basic company financials, and company financial history to gain a full view of the company's fundamental information to inform traders. Make sure to include as much detail as possible. Provide specific, actionable insights with supporting evidence to help traders make informed decisions."
+                + " Make sure to append a Markdown table at the end of the report to organize key points in the report, organized and easy to read."
+                + " Use the available tools: `get_fundamentals` for comprehensive company analysis, `get_balance_sheet`, `get_cashflow`, and `get_income_statement` for specific financial statements."
+                + get_language_instruction()
+            )
 
         prompt = ChatPromptTemplate.from_messages(
             [

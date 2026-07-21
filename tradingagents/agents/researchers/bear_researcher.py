@@ -17,19 +17,25 @@ def create_bear_researcher(llm):
         fundamentals_report = state["fundamentals_report"]
         instrument_context = get_instrument_context_from_state(state)
         asset_type = state.get("asset_type", "stock")
-        target_label = "stock" if asset_type == "stock" else "asset"
+        target_label = "fund" if asset_type == "fund" else "stock" if asset_type == "stock" else "asset"
         fundamentals_label = (
             "Company fundamentals report"
             if asset_type == "stock"
+            else "Fund analysis report"
+            if asset_type == "fund"
             else "Asset fundamentals report (may be unavailable for crypto)"
+        )
+        risk_focus = (
+            "Highlight concentration, costs, benchmark underperformance, tracking, liquidity, volatility, and drawdown risks."
+            if asset_type == "fund"
+            else "Highlight market, financial, competitive, and macroeconomic risks."
         )
 
         prompt = f"""You are a Bear Analyst making the case against investing in the {target_label}. Your goal is to present a well-reasoned argument emphasizing risks, challenges, and negative indicators. Leverage the provided research and data to highlight potential downsides and counter bullish arguments effectively.
 
 Key points to focus on:
 
-- Risks and Challenges: Highlight factors like market saturation, financial instability, or macroeconomic threats that could hinder the stock's performance.
-- Competitive Weaknesses: Emphasize vulnerabilities such as weaker market positioning, declining innovation, or threats from competitors.
+- Risks and Challenges: {risk_focus}
 - Negative Indicators: Use evidence from financial data, market trends, or recent adverse news to support your position.
 - Bull Counterpoints: Critically analyze the bull argument with specific data and sound reasoning, exposing weaknesses or over-optimistic assumptions.
 - Engagement: Present your argument in a conversational style, directly engaging with the bull analyst's points and debating effectively rather than simply listing facts.
