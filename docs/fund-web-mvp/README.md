@@ -1,11 +1,12 @@
 # Fund Mode and Web UI MVP
 
-- Status: implementation-ready specification
+- Status: implemented in commit `47d0263`
 - Prepared: 2026-07-21
+- Implemented: 2026-07-21
 - Working branch: `feat/fund-web-mvp`
 
-Product implementation has not started. This directory is the approved planning
-and handoff package for the implementation session.
+This directory records the specification used to implement the MVP. Follow-on
+work is specified in `docs/next-phases/`.
 
 ## Objective
 
@@ -47,34 +48,26 @@ TESTING, then CODEX_HANDOFF.
 
 ## Repository and Fork Workflow
 
-The current clone has `origin` set to the official repository:
+The current clone uses the long-lived fork as `origin`:
 
 ```text
-https://github.com/TauricResearch/TradingAgents.git
+origin   https://github.com/SShending/TradingAgents-web.git
+upstream https://github.com/TauricResearch/TradingAgents.git
 ```
 
-Local development does not require a fork. Work in the current clone on the
-existing `feat/fund-web-mvp` branch and leave `main` untouched.
-
-If the developer has write access to the official repository:
+Develop against the fork. Keep `upstream` only for selectively incorporating
+official fixes:
 
 ```bash
-git push -u origin feat/fund-web-mvp
-```
-
-If the developer does not have write access, create a GitHub fork before the
-first push, then use the conventional remote names:
-
-```bash
-git remote rename origin upstream
-git remote add origin git@github.com:<YOUR_ACCOUNT>/TradingAgents.git
 git fetch upstream
-git push -u origin feat/fund-web-mvp
+git switch main
+git merge --ff-only upstream/main
+git push origin main
 ```
 
-Open the pull request from the fork branch to
-`TauricResearch/TradingAgents:main`. A fork is a publication and collaboration
-mechanism, not a requirement for editing files locally.
+Feature pull requests target `SShending/TradingAgents-web:main`. Do not open an
+upstream pull request unless the owner explicitly decides to contribute a
+specific change back to the official project.
 
 ## Development Prerequisites
 
@@ -84,32 +77,22 @@ mechanism, not a requirement for editing files locally.
   endpoint, for manual end-to-end analysis.
 - Network access for live Yahoo Finance and LLM smoke tests.
 
-The current environment has not installed the Python package dependencies yet.
-Create an isolated environment before implementation:
+For a clean development environment:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
-```
-
-The `web` optional extra does not exist yet; adding it is an implementation task.
-After Phase 0 creates it, install the complete development environment with:
-
-```bash
 python -m pip install -e ".[dev,web]"
+cd web
+npm ci
 ```
 
 Never commit `.env`, API keys, generated reports, `node_modules`, or frontend
 build output.
 
-## Start Condition
+## Completion
 
-Implementation may begin when:
-
-- all documents in this directory have been read;
-- the working branch is `feat/fund-web-mvp`;
-- unrelated user changes have been identified and preserved;
-- Python and frontend dependencies can be installed; and
-- the implementer accepts the MVP non-goals in PRODUCT.md.
+The implementation is committed and pushed on `feat/fund-web-mvp`. New
+development should use the phase documents in `docs/next-phases/` and separate
+feature branches after this MVP is merged to the fork's `main`.

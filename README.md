@@ -209,6 +209,11 @@ release.
 
 The web interface, like the rest of TradingAgents, is for research only and is
 not investment advice or a trade-execution system.
+
+The development-ready roadmap for persistence, trustworthy China public-fund
+data, and real portfolio advice is in
+[`docs/next-phases/README.md`](docs/next-phases/README.md).
+
 You will see a screen where you can select your desired tickers, analysis date, LLM provider, research depth, and more.
 
 ### Markets and tickers
