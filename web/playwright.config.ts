@@ -9,7 +9,7 @@ export default defineConfig({
   use: { baseURL: 'http://127.0.0.1:5173', trace: 'retain-on-failure' },
   webServer: [
     {
-      command: 'TRADINGAGENTS_WEB_DEMO=1 ../.venv/bin/python -m uvicorn tradingagents.web.app:app --host 127.0.0.1 --port 8000',
+      command: 'TRADINGAGENTS_WEB_DEMO=1 TRADINGAGENTS_WEB_DB_PATH=/tmp/tradingagents-playwright.sqlite3 ../.venv/bin/python -m uvicorn tradingagents.web.app:app --host 127.0.0.1 --port 8000',
       url: 'http://127.0.0.1:8000/api/health',
       reuseExistingServer: true,
       timeout: 30_000,

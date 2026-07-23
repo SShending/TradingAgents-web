@@ -367,6 +367,26 @@ def _structured_sentiment_llm(captured: dict, report: SentimentReport | None = N
 
 @pytest.mark.unit
 class TestSentimentAnalystAgent:
+    @pytest.fixture(autouse=True)
+    def _synthetic_sentiment_sources(self, monkeypatch):
+        import tradingagents.agents.analysts.sentiment_analyst as module
+
+        monkeypatch.setattr(
+            module,
+            "get_news",
+            MagicMock(func=lambda *_args, **_kwargs: "Synthetic Yahoo headlines"),
+        )
+        monkeypatch.setattr(
+            module,
+            "fetch_stocktwits_messages",
+            lambda *_args, **_kwargs: "Synthetic StockTwits messages",
+        )
+        monkeypatch.setattr(
+            module,
+            "fetch_reddit_posts",
+            lambda *_args, **_kwargs: "Synthetic Reddit posts",
+        )
+
     def test_structured_path_produces_rendered_markdown(self):
         captured = {}
         report = SentimentReport(

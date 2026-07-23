@@ -1,9 +1,14 @@
 """Shared pytest fixtures that prevent CI hangs when API keys are absent."""
 
 import os
+import socket
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+os.environ.setdefault(
+    "TRADINGAGENTS_WEB_DB_PATH", f"/tmp/tradingagents-pytest-{os.getpid()}.sqlite3"
+)
 
 
 def pytest_configure(config):
@@ -35,6 +40,26 @@ def _dummy_api_keys(monkeypatch):
         # `or` not a .get default: an env var present but empty (e.g. a key left
         # blank in a .env copied from .env.example) must still get the placeholder.
         monkeypatch.setenv(env_var, os.environ.get(env_var) or "placeholder")
+
+
+@pytest.fixture(autouse=True)
+def _block_unmarked_network(monkeypatch, request):
+    """Default tests fail immediately if code attempts a real network connection."""
+    if request.node.get_closest_marker("paid"):
+        from tradingagents.usage import paid_tests_enabled
+
+        enabled, _ = paid_tests_enabled()
+        if enabled:
+            return
+
+    original_connect = socket.socket.connect
+
+    def blocked_connect(self, address):
+        if self.family == socket.AF_UNIX:
+            return original_connect(self, address)
+        raise AssertionError(f"Real network is disabled in default tests: {address!r}")
+
+    monkeypatch.setattr(socket.socket, "connect", blocked_connect)
 
 
 @pytest.fixture(autouse=True)

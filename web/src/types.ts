@@ -1,5 +1,5 @@
 export type AssetMode = 'auto' | 'stock' | 'fund' | 'crypto'
-export type JobStatus = 'idle' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelling' | 'cancelled'
+export type JobStatus = 'idle' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelling' | 'cancelled' | 'interrupted' | 'budget_exhausted'
 
 export interface Instrument {
   requested_symbol: string
@@ -57,4 +57,84 @@ export interface AnalysisState {
   reports: Record<string, string>
   result?: AnalysisResult
   error?: string
+  reportId?: string
+  adviceId?: string
+}
+
+export interface AnalysisJob {
+  job_id: string
+  status: JobStatus
+  result?: AnalysisResult
+  error?: { code: string; message: string }
+  report_id?: string
+  advice_id?: string
+  created_at: string
+  updated_at: string
+  resumable: boolean
+  request: Record<string, unknown>
+}
+
+export interface EvidenceField {
+  name: string
+  value: unknown
+  unit?: string | null
+  source_reference: string
+  retrieved_at: string
+  effective_at?: string | null
+  freshness_status: string
+  normalization_warnings: string[]
+}
+
+export interface TrustAssessment {
+  id: string
+  level: 'trusted' | 'usable_with_warning' | 'insufficient'
+  executable: boolean
+  reason_codes: string[]
+  warnings: string[]
+  assessed_at: string
+  evidence: EvidenceField[]
+}
+
+export interface UsageSummary {
+  requests: number
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  retries: number
+  token_usage_complete: boolean
+  warnings: string[]
+  limits?: Record<string, number>
+}
+
+export interface AdviceVersion {
+  id: string
+  report_id: string
+  parent_id?: string | null
+  version: number
+  created_at: string
+  action: string
+  confidence: string
+  reason: string
+  eligibility: string
+  trigger_message_ids: string[]
+}
+
+export interface ConversationMessage {
+  id: string
+  role: string
+  content: string
+  created_at: string
+  source_references: string[]
+  refreshed_data: boolean
+  candidate_adjustment: boolean
+}
+
+export interface BackupPreview {
+  backup_id: string
+  valid: boolean
+  compatible: boolean
+  schema_version?: number | null
+  created_at?: string | null
+  size_bytes?: number | null
+  reason?: string | null
 }

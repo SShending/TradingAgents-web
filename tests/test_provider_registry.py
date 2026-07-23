@@ -17,6 +17,7 @@ from tradingagents.llm_clients.openai_client import (
 def test_registry_membership():
     assert is_openai_compatible("openai")
     assert is_openai_compatible("openai_compatible")  # the generic endpoint
+    assert is_openai_compatible("ciii")
     # native (different API) clients are intentionally NOT in the registry
     assert not is_openai_compatible("anthropic")
     assert not is_openai_compatible("google")
@@ -57,3 +58,18 @@ def test_key_optionality():
     assert OPENAI_COMPATIBLE_PROVIDERS["xai"].key_optional is False
     # OLLAMA_BASE_URL is the only base-URL env override.
     assert OPENAI_COMPATIBLE_PROVIDERS["ollama"].base_url_env == "OLLAMA_BASE_URL"
+    ciii = OPENAI_COMPATIBLE_PROVIDERS["ciii"]
+    assert ciii.base_url_env == "TRADINGAGENTS_CIII_BASE_URL"
+    assert ciii.require_base_url is True and ciii.key_optional is False
+
+
+@pytest.mark.unit
+def test_ciii_resolves_server_side_endpoint_and_key(monkeypatch):
+    from tradingagents.llm_clients.factory import create_llm_client
+
+    monkeypatch.setenv("TRADINGAGENTS_CIII_BASE_URL", "https://ciii.example/v1")
+    monkeypatch.setenv("CIII_API_KEY", "server-only-test-key")
+    llm = create_llm_client(provider="ciii", model="ciii-test-model").get_llm()
+    assert str(llm.openai_api_base) == "https://ciii.example/v1"
+    key = llm.openai_api_key.get_secret_value()
+    assert key == "server-only-test-key"

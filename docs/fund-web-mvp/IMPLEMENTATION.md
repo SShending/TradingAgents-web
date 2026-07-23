@@ -130,7 +130,7 @@ overlap, clipped controls, blank charts, or layout shifts during streamed update
 - Extend Docker/Compose only after local development works; preserve the CLI
   entrypoint or add a separate web service rather than replacing it.
 - Add frontend lint, test, and build jobs to CI.
-- Keep the existing Python 3.10-3.13 matrix green.
+- Keep the supported Python 3.11-3.13 matrix green.
 - Update top-level README with fund support, web startup, data limitations, and
   research-only disclaimer.
 - Add a changelog entry only when behavior is implemented and verified.
