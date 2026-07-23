@@ -71,7 +71,7 @@ specific change back to the official project.
 
 ## Development Prerequisites
 
-- Python 3.10-3.13; this machine currently provides `python3` 3.12.
+- Python 3.11-3.13; this machine currently provides `python3` 3.12.
 - Node.js 20 or newer; this machine currently provides Node 22 and npm 10.
 - One configured LLM provider key, or a reachable local Ollama/OpenAI-compatible
   endpoint, for manual end-to-end analysis.
