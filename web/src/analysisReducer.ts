@@ -1,4 +1,4 @@
-import type { AnalysisEvent, AnalysisState } from './types'
+import type { AnalysisEvent, AnalysisJob, AnalysisState } from './types'
 
 export const initialAnalysisState: AnalysisState = {
   status: 'idle',
@@ -15,6 +15,7 @@ export type Action =
   | { type: 'reset' }
   | { type: 'error'; message: string }
   | { type: 'cancelling' }
+  | { type: 'loaded'; job: AnalysisJob }
 
 export function analysisReducer(state: AnalysisState, action: Action): AnalysisState {
   if (action.type === 'reset') return initialAnalysisState
@@ -22,6 +23,12 @@ export function analysisReducer(state: AnalysisState, action: Action): AnalysisS
   if (action.type === 'connected') return { ...state, connected: action.value }
   if (action.type === 'error') return { ...state, status: 'failed', error: action.message }
   if (action.type === 'cancelling') return { ...state, status: 'cancelling' }
+  if (action.type === 'loaded') {
+    const result = action.job.result
+    const reportKeys = ['market_report','sentiment_report','news_report','fundamentals_report','investment_plan','trader_investment_plan','final_trade_decision']
+    const reports = Object.fromEntries(reportKeys.filter(key => typeof result?.[key] === 'string').map(key => [key, String(result?.[key])]))
+    return { ...initialAnalysisState, status: action.job.status, jobId: action.job.job_id, result, reports, error: action.job.error?.message, reportId: action.job.report_id, adviceId: action.job.advice_id }
+  }
   const event = action.event
   if (event.id <= state.lastEventId) return state
   const next = { ...state, lastEventId: event.id }
@@ -37,6 +44,8 @@ export function analysisReducer(state: AnalysisState, action: Action): AnalysisS
     next.status = 'completed'
     next.result = event.data.result as AnalysisState['result']
     next.connected = false
+    next.reportId = String(event.data.report_id ?? '') || undefined
+    next.adviceId = String(event.data.advice_id ?? '') || undefined
   }
   if (event.type === 'analysis.failed') {
     next.status = 'failed'
@@ -45,6 +54,18 @@ export function analysisReducer(state: AnalysisState, action: Action): AnalysisS
   }
   if (event.type === 'analysis.cancelled') {
     next.status = 'cancelled'
+    next.connected = false
+  }
+  if (event.type === 'analysis.interrupted') {
+    next.status = 'interrupted'
+    next.connected = false
+  }
+  if (event.type === 'analysis.budget_exhausted') {
+    next.status = 'budget_exhausted'
+    next.result = event.data.result as AnalysisState['result']
+    next.reportId = String(event.data.report_id ?? '') || undefined
+    next.adviceId = String(event.data.advice_id ?? '') || undefined
+    next.error = String((event.data.error as { message?: string } | undefined)?.message ?? 'Budget exhausted')
     next.connected = false
   }
   return next

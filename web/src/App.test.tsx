@@ -10,9 +10,12 @@ class FakeEventSource {
 
 beforeEach(() => {
   vi.stubGlobal('EventSource', FakeEventSource)
-  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
+    if (url.includes('/config/options')) return new Response(JSON.stringify({ budget: { limits: { max_requests_per_analysis: 10, max_total_tokens_per_analysis: 1000 }, historical_estimate: null, monetary_estimate: 'unknown', daily_usage: { requests: 0, tokens: 0 } } }), { status: 200 })
     if (url.includes('/resolve')) return new Response(JSON.stringify({ requested_symbol:'SPY', canonical_symbol:'SPY', asset_type:'fund', fund_type:'etf', quote_type:'ETF', name:'SPDR S&P 500 ETF Trust', exchange:'PCX', currency:'USD', warnings:[] }), { status: 200 })
+    if (url.endsWith('/api/analyses') && !init?.method) return new Response(JSON.stringify({ items: [] }), { status: 200 })
+    if (url.includes('/admin/backups')) return new Response(JSON.stringify({ items: [] }), { status: 200 })
     return new Response(JSON.stringify({ job_id:'job-1', status:'queued' }), { status: 202 })
   }))
 })
@@ -32,4 +35,20 @@ it('renders stable empty report states and accessible export action', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Analyst Reports' }))
   expect(screen.getByText('No report content yet')).toBeInTheDocument()
   expect(screen.getByLabelText('Download Markdown report')).toBeInTheDocument()
+})
+
+it('exposes persistence, trust, usage, advice, chat, and recovery views', async () => {
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: 'History' }))
+  expect(await screen.findByText('Analysis history')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Data Quality' }))
+  expect(screen.getByText('No data quality assessment')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Usage' }))
+  expect(screen.getByText('Configured budget')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Advice' }))
+  expect(screen.getByText('No formal advice')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Q&A' }))
+  expect(screen.getByText('Report Q&A unavailable')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Backup' }))
+  expect(await screen.findByText('Backup and restore')).toBeInTheDocument()
 })
