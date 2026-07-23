@@ -1,10 +1,13 @@
-"""FastAPI application factory for the local Fund workspace."""
+"""Local-only FastAPI research workspace."""
 
 from __future__ import annotations
 
 import os
-from datetime import date
+from copy import deepcopy
+from dataclasses import asdict
+from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Any
 
 import yfinance as yf
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -12,13 +15,36 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from tradingagents.dataflows.fund_data import fetch_fund_snapshot
+from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.instruments import InstrumentNotFoundError, resolve_instrument
 from tradingagents.llm_clients.api_key_env import get_api_key_env
 from tradingagents.llm_clients.model_catalog import get_model_options
-from tradingagents.services.analysis_service import DemoAnalysisService, GraphAnalysisService
+from tradingagents.persistence import BackupService, Database, Repository
+from tradingagents.services.analysis_service import (
+    DemoAnalysisService,
+    GraphAnalysisService,
+    _demo_snapshot,
+    has_valid_checkpoint,
+)
+from tradingagents.services.artifact_service import ArtifactService
+from tradingagents.services.conversation_service import (
+    ConversationNotFoundError,
+    ConversationService,
+    DeterministicChatResponder,
+    LLMChatResponder,
+)
+from tradingagents.usage import BudgetExhaustedError, BudgetLimits, BudgetTracker
+from tradingagents.usage.budget import summarize_usage
 
-from .jobs import JobBusyError, JobManager
-from .schemas import AnalysisCreate, ResolveRequest
+from .jobs import JobBusyError, JobManager, JobResumeError
+from .schemas import (
+    AnalysisCreate,
+    ConversationMessageCreate,
+    ReevaluateCreate,
+    ResolveRequest,
+    RestoreRequest,
+)
 
 
 def _price_probe(symbol: str) -> bool:
@@ -33,6 +59,7 @@ def _demo_identity(symbol: str) -> dict[str, str]:
         "SPY": {"company_name": "SPDR S&P 500 ETF Trust", "quote_type": "ETF", "exchange": "PCX", "currency": "USD"},
         "VFIAX": {"company_name": "Vanguard 500 Index Admiral", "quote_type": "MUTUALFUND", "exchange": "NAS", "currency": "USD"},
         "AAPL": {"company_name": "Apple Inc.", "quote_type": "EQUITY", "exchange": "NMS", "currency": "USD"},
+        "BTC-USD": {"company_name": "Bitcoin USD", "quote_type": "CRYPTOCURRENCY", "exchange": "CCC", "currency": "USD"},
         "EMPTY": {"company_name": "Holdings Coverage Example", "quote_type": "ETF", "exchange": "PCX", "currency": "USD"},
         "FAIL": {"company_name": "Provider Failure Example", "quote_type": "ETF", "exchange": "PCX", "currency": "USD"},
         "SLOW": {"company_name": "Cancellation Example Fund", "quote_type": "ETF", "exchange": "PCX", "currency": "USD"},
@@ -40,12 +67,111 @@ def _demo_identity(symbol: str) -> dict[str, str]:
     return values.get(symbol.upper(), {})
 
 
-def create_app(*, demo: bool | None = None, manager: JobManager | None = None) -> FastAPI:
+def _trust_json(value) -> dict[str, Any] | None:
+    return asdict(value) if value else None
+
+
+def _advice_json(value) -> dict[str, Any]:
+    result = asdict(value)
+    result["trigger_message_ids"] = list(value.trigger_message_ids)
+    return result
+
+
+def _default_database() -> Database:
+    path = os.getenv(
+        "TRADINGAGENTS_WEB_DB_PATH",
+        str(Path.home() / ".tradingagents" / "web" / "tradingagents.db"),
+    )
+    return Database(path)
+
+
+def _demo_fresh_data(report: dict[str, Any]) -> dict[str, Any]:
+    value = deepcopy(report)
+    today = date.today().isoformat()
+    value["trade_date"] = today
+    snapshot = value.get("fund_snapshot") or _demo_snapshot(
+        str(value.get("company_of_interest", "SPY")), str(value.get("asset_type", "fund"))
+    )
+    if snapshot:
+        points = snapshot.setdefault("price_series", [])
+        latest = float(points[-1]["adjusted_close"]) if points else 100.0
+        points.append({"date": today, "adjusted_close": round(latest + 1, 2), "benchmark": latest})
+        snapshot["observed_at"] = datetime.now(UTC).isoformat()
+        value["fund_snapshot"] = snapshot
+    return value
+
+
+def _live_fresh_data(report: dict[str, Any]) -> dict[str, Any]:
+    if report.get("asset_type") != "fund":
+        raise RuntimeError("FRESH_DATA_UNAVAILABLE_FOR_ASSET")
+    symbol = str(report.get("company_of_interest"))
+    descriptor = resolve_instrument(symbol, "fund")
+    today = date.today().isoformat()
+    snapshot = fetch_fund_snapshot(
+        descriptor, today, str(report.get("benchmark_symbol") or "SPY")
+    ).to_dict()
+    value = deepcopy(report)
+    value["trade_date"] = today
+    value["fund_snapshot"] = snapshot
+    return value
+
+
+def create_app(
+    *,
+    demo: bool | None = None,
+    manager: JobManager | None = None,
+    repository: Repository | None = None,
+) -> FastAPI:
     demo = (os.getenv("TRADINGAGENTS_WEB_DEMO") == "1") if demo is None else demo
-    service = DemoAnalysisService() if demo else GraphAnalysisService()
-    manager = manager or JobManager(service)
-    app = FastAPI(title="TradingAgents Fund Workspace", version="0.1.0")
+    if manager is not None:
+        repository = manager.repository
+    repository = repository or Repository(_default_database())
+    artifact_service = ArtifactService(repository)
+    limits = BudgetLimits.from_env()
+    if manager is None:
+        service = DemoAnalysisService() if demo else GraphAnalysisService()
+        manager = JobManager(
+            service,
+            repository=repository,
+            completion_handler=artifact_service.persist_analysis,
+            checkpoint_validator=(
+                None if demo else lambda record: has_valid_checkpoint(record.request)
+            ),
+            budget_factory=(
+                None
+                if demo
+                else lambda job: BudgetTracker(
+                    repository,
+                    job_id=job.id,
+                    provider=str(job.request["llm_provider"]),
+                    limits=limits,
+                )
+            ),
+        )
+    elif manager.completion_handler is None:
+        manager.completion_handler = artifact_service.persist_analysis
+
+    def responder_factory(request: dict[str, Any]):
+        if demo:
+            return DeterministicChatResponder()
+        return LLMChatResponder(
+            provider=str(request.get("llm_provider") or DEFAULT_CONFIG["llm_provider"]),
+            model=str(request.get("quick_model") or DEFAULT_CONFIG["quick_think_llm"]),
+            base_url=DEFAULT_CONFIG.get("backend_url"),
+        )
+
+    conversations = ConversationService(
+        repository,
+        responder_factory=responder_factory,
+        fresh_data_fetcher=_demo_fresh_data if demo else _live_fresh_data,
+        budget_limits=limits,
+    )
+    backups = BackupService(repository.database)
+    app = FastAPI(title="TradingAgents Research Workspace", version="0.2.0")
     app.state.jobs = manager
+    app.state.repository = repository
+    app.state.conversations = conversations
+    app.state.backups = backups
     app.state.demo = demo
     app.add_middleware(
         CORSMiddleware,
@@ -54,6 +180,10 @@ def create_app(*, demo: bool | None = None, manager: JobManager | None = None) -
         allow_headers=["Content-Type", "Last-Event-ID"],
     )
 
+    @app.on_event("shutdown")
+    def shutdown() -> None:
+        manager.shutdown()
+
     @app.get("/api/health")
     def health():
         return {"status": "ok", "mode": "demo" if demo else "live"}
@@ -61,21 +191,28 @@ def create_app(*, demo: bool | None = None, manager: JobManager | None = None) -
     @app.get("/api/config/options")
     def options():
         providers = []
-        for provider in ("openai", "anthropic", "google", "ollama", "openai_compatible"):
+        for provider in ("ciii", "openai", "anthropic", "google", "ollama", "openai_compatible"):
             key_name = get_api_key_env(provider)
+            configured = demo or (not key_name or bool(os.getenv(key_name)))
+            if not demo and provider in {"ciii", "openai_compatible"}:
+                configured = configured and bool(
+                    os.getenv("TRADINGAGENTS_CIII_BASE_URL" if provider == "ciii" else "TRADINGAGENTS_LLM_BACKEND_URL")
+                )
             providers.append({
                 "id": provider,
-                "configured": demo or not key_name or bool(os.getenv(key_name)),
+                "configured": configured,
                 "models": {
                     "quick": [value for _, value in get_model_options(provider, "quick")][:12],
                     "deep": [value for _, value in get_model_options(provider, "deep")][:12],
                 },
             })
+        tracker = BudgetTracker(repository, provider="ciii", limits=limits)
         return {
             "asset_types": ["auto", "stock", "fund", "crypto"],
             "analysts": ["market", "social", "news", "fundamentals"],
             "languages": ["English", "Chinese", "Spanish", "French", "Japanese"],
             "providers": providers,
+            "budget": tracker.preflight(),
         }
 
     @app.post("/api/instruments/resolve")
@@ -91,6 +228,10 @@ def create_app(*, demo: bool | None = None, manager: JobManager | None = None) -
             raise HTTPException(status_code=404, detail={"code": "INSTRUMENT_NOT_FOUND", "message": str(exc)}) from exc
         return descriptor.to_dict()
 
+    @app.get("/api/analyses")
+    def list_analyses(limit: int = 100):
+        return {"items": manager.list(limit=min(max(limit, 1), 500))}
+
     @app.post("/api/analyses", status_code=202)
     def create_analysis(body: AnalysisCreate):
         request_data = body.model_dump(mode="json")
@@ -102,6 +243,8 @@ def create_app(*, demo: bool | None = None, manager: JobManager | None = None) -
         )
         request_data["symbol"] = descriptor.canonical_symbol
         request_data["asset_type"] = descriptor.asset_type.value
+        if body.research_depth > limits.max_debate_rounds:
+            raise HTTPException(status_code=409, detail={"code": "MAX_DEBATE_ROUNDS_EXCEEDED", "message": "Research depth exceeds the configured deterministic budget"})
         try:
             job = manager.create(request_data)
         except JobBusyError as exc:
@@ -111,7 +254,7 @@ def create_app(*, demo: bool | None = None, manager: JobManager | None = None) -
     def require_job(job_id: str):
         job = manager.get(job_id)
         if job is None:
-            raise HTTPException(status_code=404, detail={"code": "JOB_NOT_FOUND", "message": "Unknown or expired analysis job"})
+            raise HTTPException(status_code=404, detail={"code": "JOB_NOT_FOUND", "message": "Unknown analysis job"})
         return job
 
     @app.get("/api/analyses/{job_id}")
@@ -126,7 +269,11 @@ def create_app(*, demo: bool | None = None, manager: JobManager | None = None) -
             cursor = max(0, int(raw))
         except ValueError:
             cursor = 0
-        return StreamingResponse(manager.event_stream(job, cursor), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+        return StreamingResponse(
+            manager.event_stream(job, cursor),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     @app.post("/api/analyses/{job_id}/cancel")
     def cancel(job_id: str):
@@ -134,27 +281,114 @@ def create_app(*, demo: bool | None = None, manager: JobManager | None = None) -
         manager.cancel(job)
         return {"job_id": job.id, "status": job.status}
 
+    @app.post("/api/analyses/{job_id}/resume")
+    def resume(job_id: str):
+        job = require_job(job_id)
+        try:
+            manager.resume(job)
+        except (JobResumeError, JobBusyError) as exc:
+            raise HTTPException(status_code=409, detail={"code": "JOB_NOT_RESUMABLE", "message": str(exc)}) from exc
+        return {"job_id": job.id, "status": job.status}
+
     @app.get("/api/analyses/{job_id}/report.md")
     def report(job_id: str):
         job = require_job(job_id)
-        if job.status != "completed" or not job.result:
+        persisted = repository.get_report_for_job(job.id)
+        if persisted is None:
             raise HTTPException(status_code=409, detail={"code": "REPORT_NOT_READY", "message": "Report is not ready"})
-        result = job.result
-        title = result.get("company_of_interest", job.request["symbol"])
-        asset = result.get("asset_type", job.request["asset_type"])
-        lines = [
-            f"# Trading Analysis Report: {title}",
-            "",
-            f"- Asset type: {asset}",
-            f"- Analysis date: {result.get('trade_date', job.request['analysis_date'])}",
-            f"- Benchmark: {result.get('benchmark_symbol', job.request.get('benchmark_symbol', 'SPY'))}",
-            f"- Generated: {result.get('generated_at', date.today().isoformat())}",
-        ]
-        for key, heading in (("market_report", "Market Analysis"), ("sentiment_report", "Sentiment Analysis"), ("news_report", "News Analysis"), ("fundamentals_report", "Fund Analysis" if asset == "fund" else "Fundamentals Analysis"), ("investment_plan", "Research Decision"), ("trader_investment_plan", "Trading Plan"), ("final_trade_decision", "Final Decision")):
-            if result.get(key):
-                lines.extend(["", f"## {heading}", "", str(result[key])])
+        title = str(persisted.result.get("company_of_interest", job.request["symbol"]))
         filename = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in title)[:48]
-        return PlainTextResponse("\n".join(lines), headers={"Content-Disposition": f'attachment; filename="{filename}_report.md"'})
+        return PlainTextResponse(
+            persisted.markdown,
+            headers={"Content-Disposition": f'attachment; filename="{filename}_report.md"'},
+        )
+
+    @app.get("/api/analyses/{job_id}/usage")
+    def usage(job_id: str):
+        require_job(job_id)
+        records = repository.list_usage(job_id=job_id)
+        return {"summary": summarize_usage(records, limits=limits), "records": [asdict(item) for item in records]}
+
+    @app.get("/api/analyses/{job_id}/trust")
+    def trust(job_id: str):
+        require_job(job_id)
+        value = repository.latest_trust(job_id=job_id)
+        if value is None:
+            raise HTTPException(status_code=409, detail={"code": "TRUST_NOT_READY", "message": "Trust assessment is not ready"})
+        return _trust_json(value)
+
+    @app.get("/api/reports/{report_id}/versions")
+    def versions(report_id: str):
+        if repository.get_report(report_id) is None:
+            raise HTTPException(status_code=404, detail={"code": "REPORT_NOT_FOUND", "message": "Unknown report"})
+        return {"items": [_advice_json(item) for item in repository.list_advice(report_id)]}
+
+    @app.post("/api/reports/{report_id}/conversations", status_code=201)
+    def create_conversation(report_id: str):
+        try:
+            value = conversations.create(report_id)
+        except ConversationNotFoundError as exc:
+            raise HTTPException(status_code=404, detail={"code": "REPORT_NOT_FOUND", "message": "Unknown report"}) from exc
+        return asdict(value)
+
+    @app.get("/api/conversations/{conversation_id}")
+    def get_conversation(conversation_id: str):
+        try:
+            conversation, messages = conversations.get(conversation_id)
+        except ConversationNotFoundError as exc:
+            raise HTTPException(status_code=404, detail={"code": "CONVERSATION_NOT_FOUND", "message": "Unknown conversation"}) from exc
+        return {**asdict(conversation), "messages": [asdict(item) for item in messages]}
+
+    @app.post("/api/conversations/{conversation_id}/messages", status_code=201)
+    def add_message(conversation_id: str, body: ConversationMessageCreate):
+        try:
+            user, assistant = conversations.ask(
+                conversation_id,
+                body.content,
+                refresh_data=body.refresh_data,
+                candidate_adjustment=body.candidate_adjustment,
+            )
+        except ConversationNotFoundError as exc:
+            raise HTTPException(status_code=404, detail={"code": "CONVERSATION_NOT_FOUND", "message": "Unknown conversation"}) from exc
+        except BudgetExhaustedError as exc:
+            raise HTTPException(status_code=409, detail={"code": exc.code, "message": exc.reason}) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail={"code": "FRESH_DATA_UNAVAILABLE", "message": str(exc)}) from exc
+        return {"user": asdict(user), "assistant": asdict(assistant)}
+
+    @app.post("/api/conversations/{conversation_id}/re-evaluate", status_code=201)
+    def reevaluate(conversation_id: str, body: ReevaluateCreate):
+        try:
+            advice = conversations.re_evaluate(
+                conversation_id, trigger_message_ids=body.trigger_message_ids
+            )
+        except ConversationNotFoundError as exc:
+            raise HTTPException(status_code=404, detail={"code": "CONVERSATION_NOT_FOUND", "message": "Unknown conversation"}) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail={"code": str(exc), "message": "Re-evaluation could not be created"}) from exc
+        return _advice_json(advice)
+
+    @app.get("/api/admin/backups")
+    def list_backups():
+        return {"items": [asdict(item) for item in backups.list()]}
+
+    @app.post("/api/admin/backup", status_code=201)
+    def create_backup():
+        return asdict(backups.create())
+
+    @app.post("/api/admin/restore/preview")
+    def restore_preview(body: RestoreRequest):
+        return asdict(backups.preview(body.backup_id))
+
+    @app.post("/api/admin/restore/commit")
+    def restore_commit(body: RestoreRequest):
+        if repository.active_count():
+            raise HTTPException(status_code=409, detail={"code": "ACTIVE_JOB", "message": "Cannot restore while an analysis is active"})
+        try:
+            value = backups.restore(body.backup_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail={"code": str(exc), "message": "Backup cannot be restored"}) from exc
+        return {**asdict(value), "restored": True}
 
     dist = Path(__file__).resolve().parents[2] / "web" / "dist"
     if dist.exists():

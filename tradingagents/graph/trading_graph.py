@@ -36,6 +36,7 @@ from tradingagents.dataflows.utils import safe_ticker_component
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.llm_clients import create_llm_client
 from tradingagents.reporting import write_report_tree
+from tradingagents.usage import wrap_llm
 
 from .checkpointer import checkpoint_step, clear_checkpoint, get_checkpointer, thread_id
 from .conditional_logic import ConditionalLogic
@@ -114,8 +115,16 @@ class TradingAgentsGraph:
             **llm_kwargs,
         )
 
-        self.deep_thinking_llm = deep_client.get_llm()
-        self.quick_thinking_llm = quick_client.get_llm()
+        self.deep_thinking_llm = wrap_llm(
+            deep_client.get_llm(),
+            provider=self.config["llm_provider"],
+            model=self.config["deep_think_llm"],
+        )
+        self.quick_thinking_llm = wrap_llm(
+            quick_client.get_llm(),
+            provider=self.config["llm_provider"],
+            model=self.config["quick_think_llm"],
+        )
 
         self.memory_log = TradingMemoryLog(self.config)
 

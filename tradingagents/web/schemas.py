@@ -45,3 +45,17 @@ class AnalysisCreate(ResolveRequest):
         if not SYMBOL_RE.fullmatch(value.strip()):
             raise ValueError("Invalid benchmark symbol")
         return value.strip().upper()
+
+
+class ConversationMessageCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=20_000)
+    refresh_data: bool = False
+    candidate_adjustment: bool = False
+
+
+class ReevaluateCreate(BaseModel):
+    trigger_message_ids: list[str] = Field(min_length=1, max_length=100)
+
+
+class RestoreRequest(BaseModel):
+    backup_id: str = Field(pattern=r"^[0-9a-f-]{36}$")

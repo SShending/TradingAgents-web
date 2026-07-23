@@ -11,7 +11,14 @@ from typing import Any, Protocol
 
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.graph.analyst_execution import build_analyst_execution_plan
+from tradingagents.graph.checkpointer import (
+    clear_checkpoint,
+    get_checkpointer,
+    has_checkpoint,
+    thread_id,
+)
 from tradingagents.graph.trading_graph import TradingAgentsGraph
+from tradingagents.usage import BudgetExhaustedError
 
 Emit = Callable[[str, dict[str, Any]], None]
 
@@ -40,6 +47,36 @@ REPORT_KEYS = {
 }
 
 
+def checkpoint_signature(request: dict[str, Any]) -> str:
+    return "|".join([
+        "analysts=" + ",".join(request["analysts"]),
+        f"debate={request['research_depth']}",
+        f"risk={request['research_depth']}",
+        f"asset={request['asset_type']}",
+    ])
+
+
+def has_valid_checkpoint(request: dict[str, Any]) -> bool:
+    if not DEFAULT_CONFIG.get("checkpoint_enabled"):
+        return False
+    return has_checkpoint(
+        DEFAULT_CONFIG["data_cache_dir"],
+        request["symbol"],
+        str(request["analysis_date"]),
+        checkpoint_signature(request),
+    )
+
+
+def discard_checkpoint(request: dict[str, Any]) -> None:
+    if DEFAULT_CONFIG.get("checkpoint_enabled"):
+        clear_checkpoint(
+            DEFAULT_CONFIG["data_cache_dir"],
+            request["symbol"],
+            str(request["analysis_date"]),
+            checkpoint_signature(request),
+        )
+
+
 class GraphAnalysisService:
     """Own graph setup and turn streamed LangGraph states into typed events."""
 
@@ -53,6 +90,7 @@ class GraphAnalysisService:
             max_debate_rounds=request["research_depth"],
             max_risk_discuss_rounds=request["research_depth"],
             benchmark_ticker=request.get("benchmark_symbol"),
+            llm_max_retries=0,
         )
         graph = TradingAgentsGraph(selected_analysts=request["analysts"], config=config)
         symbol = request["symbol"]
@@ -66,6 +104,19 @@ class GraphAnalysisService:
             benchmark_symbol=request.get("benchmark_symbol") or graph._resolve_benchmark(symbol),
         )
         args = graph.propagator.get_graph_args()
+        checkpoint_context = None
+        if config.get("checkpoint_enabled"):
+            signature = checkpoint_signature(request)
+            if not request.get("_resume_checkpoint"):
+                clear_checkpoint(
+                    config["data_cache_dir"], symbol, str(request["analysis_date"]), signature
+                )
+            checkpoint_context = get_checkpointer(config["data_cache_dir"], symbol)
+            saver = checkpoint_context.__enter__()
+            graph.graph = graph.workflow.compile(checkpointer=saver)
+            args.setdefault("config", {}).setdefault("configurable", {})["thread_id"] = thread_id(
+                symbol, str(request["analysis_date"]), signature
+            )
         plan = build_analyst_execution_plan(request["analysts"])
         emitted_reports: dict[str, str] = {}
         completed_agents: set[str] = set()
@@ -74,18 +125,33 @@ class GraphAnalysisService:
             emit("agent.started", {"agent": spec.agent_node})
 
         final_state = initial
-        for chunk in graph.graph.stream(initial, **args):
-            if should_cancel():
-                raise AnalysisCancelledError
-            final_state = chunk
-            for spec in plan.specs:
-                value = chunk.get(spec.report_key)
-                if value and emitted_reports.get(spec.report_key) != value:
-                    emitted_reports[spec.report_key] = value
-                    emit("report.updated", {"section": spec.report_key, "title": REPORT_KEYS[spec.report_key], "content": value})
-                    if spec.agent_node not in completed_agents:
-                        completed_agents.add(spec.agent_node)
-                        emit("agent.completed", {"agent": spec.agent_node})
+        completed = False
+        try:
+            for chunk in graph.graph.stream(initial, **args):
+                if should_cancel():
+                    raise AnalysisCancelledError
+                final_state = chunk
+                for spec in plan.specs:
+                    value = chunk.get(spec.report_key)
+                    if value and emitted_reports.get(spec.report_key) != value:
+                        emitted_reports[spec.report_key] = value
+                        emit("report.updated", {"section": spec.report_key, "title": REPORT_KEYS[spec.report_key], "content": value})
+                        if spec.agent_node not in completed_agents:
+                            completed_agents.add(spec.agent_node)
+                            emit("agent.completed", {"agent": spec.agent_node})
+            completed = True
+        except AnalysisCancelledError:
+            raise
+        except BudgetExhaustedError as exc:
+            raise BudgetExhaustedError(exc.reason, partial_result=final_state) from exc
+        finally:
+            if completed and config.get("checkpoint_enabled"):
+                clear_checkpoint(
+                    config["data_cache_dir"], symbol, str(request["analysis_date"]),
+                    checkpoint_signature(request),
+                )
+            if checkpoint_context is not None:
+                checkpoint_context.__exit__(None, None, None)
         return final_state
 
 

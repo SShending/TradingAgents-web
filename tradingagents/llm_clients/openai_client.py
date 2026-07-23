@@ -230,6 +230,11 @@ OPENAI_COMPATIBLE_PROVIDERS: dict[str, ProviderSpec] = {
     "openai_compatible": ProviderSpec(
         require_base_url=True, key_optional=True, chat_class=LocalCompatibleChatOpenAI
     ),
+    "ciii": ProviderSpec(
+        base_url_env="TRADINGAGENTS_CIII_BASE_URL",
+        require_base_url=True,
+        chat_class=LocalCompatibleChatOpenAI,
+    ),
 }
 
 

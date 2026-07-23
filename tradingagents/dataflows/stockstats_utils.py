@@ -26,13 +26,14 @@ MAX_OHLCV_STALE_DAYS = 10
 OHLCV_CACHE_TTL_SECONDS = 900
 
 
-def yf_retry(func, max_retries=3, base_delay=2.0):
+def yf_retry(func, max_retries=3, base_delay=2.0, *, sleeper=None):
     """Execute a yfinance call with exponential backoff on rate limits.
 
     yfinance raises YFRateLimitError on HTTP 429 responses but does not
     retry them internally. This wrapper adds retry logic specifically
     for rate limits. Other exceptions propagate immediately.
     """
+    sleeper = sleeper or time.sleep
     for attempt in range(max_retries + 1):
         try:
             return func()
@@ -40,7 +41,7 @@ def yf_retry(func, max_retries=3, base_delay=2.0):
             if attempt < max_retries:
                 delay = base_delay * (2 ** attempt)
                 logger.warning(f"Yahoo Finance rate limited, retrying in {delay:.0f}s (attempt {attempt + 1}/{max_retries})")
-                time.sleep(delay)
+                sleeper(delay)
             else:
                 raise
 
