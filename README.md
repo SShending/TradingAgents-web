@@ -183,7 +183,8 @@ python -m pip install -e ".[dev,web]"
 cd web && npm ci && cd ..
 ```
 
-Start the API and frontend in separate terminals. Both bind locally by default:
+For development, start the API and frontend in separate terminals. Both bind
+locally by default:
 
 ```bash
 TRADINGAGENTS_WEB_DEMO=1 python -m uvicorn tradingagents.web.app:app --host 127.0.0.1 --port 8000
@@ -194,10 +195,19 @@ cd web
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-Open `http://127.0.0.1:5173`. Remove `TRADINGAGENTS_WEB_DEMO=1` for live Yahoo
-and LLM analysis after configuring the selected provider key. The browser never
-receives provider secrets. Web jobs and results are held in memory and are lost
-when the API process restarts.
+Open `http://127.0.0.1:5173`. For a production build served by the API, use one
+command and open `http://127.0.0.1:8000`:
+
+```bash
+TRADINGAGENTS_WEB_DEMO=1 ./scripts/start-web.sh
+```
+
+Remove `TRADINGAGENTS_WEB_DEMO=1` for live Yahoo and LLM analysis after
+configuring the selected provider key. The browser never receives provider
+secrets. Jobs, reports, SSE events, formal advice versions, conversations,
+usage, evidence, and trust assessments persist in SQLite across restarts.
+Backup and recovery instructions are in
+[`docs/next-phases/PHASE_2_OPERATIONS.md`](docs/next-phases/PHASE_2_OPERATIONS.md).
 
 Fund field coverage varies by Yahoo instrument. Missing profile, holdings, NAV,
 or allocation fields are shown as unavailable rather than zero. Fund profile

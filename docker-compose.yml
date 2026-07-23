@@ -17,7 +17,14 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
-      - tradingagents_data:/home/appuser/.tradingagents
+      - tradingagents_web_data:/home/appuser/.tradingagents/web
+      - tradingagents_cache:/home/appuser/.tradingagents/cache
+      - tradingagents_reports:/home/appuser/.tradingagents/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   ollama:
     image: ollama/ollama:latest
@@ -44,4 +51,7 @@ services:
 
 volumes:
   tradingagents_data:
+  tradingagents_web_data:
+  tradingagents_cache:
+  tradingagents_reports:
   ollama_data:

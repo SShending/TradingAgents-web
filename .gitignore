@@ -225,6 +225,11 @@ web/coverage/
 web/playwright-report/
 web/test-results/
 web/*.tsbuildinfo
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.db-shm
+*.db-wal
 
 # Enterprise env file (secrets) and generated run reports
 .env.enterprise

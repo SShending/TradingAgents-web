@@ -52,6 +52,8 @@ bedrock = [
 
 [project.scripts]
 tradingagents = "cli.main:app"
+tradingagents-web = "tradingagents.web.__main__:main"
+tradingagents-web-admin = "tradingagents.web.admin:main"
 
 [tool.setuptools.packages.find]
 include = ["tradingagents*", "cli*"]
@@ -66,6 +68,7 @@ markers = [
     "unit: fast isolated unit tests",
     "integration: tests requiring external services",
     "smoke: quick sanity-check tests",
+    "paid: opt-in live provider tests with explicit budgets",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",
