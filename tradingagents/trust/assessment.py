@@ -124,3 +124,38 @@ def assess_result_evidence(
         tuple(reasons), tuple(dict.fromkeys(warnings)), datetime.now(UTC).isoformat(), tuple(evidence),
     )
     return observation, assessment
+
+
+def assess_provider_rate_limited(*, job_id: str, observed_at: str) -> TrustAssessment:
+    """Persist a deterministic non-evidence trust outcome for provider outage.
+
+    A throttle response is operational metadata, not financial evidence.  The
+    empty evidence set preserves that distinction while making the job's trust
+    state recoverable and explicit.
+    """
+    return TrustAssessment(
+        str(uuid.uuid4()),
+        job_id,
+        None,
+        TrustLevel.INSUFFICIENT,
+        False,
+        ("PROVIDER_RATE_LIMITED",),
+        ("Yahoo Finance data was unavailable because the provider rate limited this request.",),
+        observed_at,
+        (),
+    )
+
+
+def assess_provider_timed_out(*, job_id: str, observed_at: str) -> TrustAssessment:
+    """Persist a deterministic non-evidence trust outcome for provider timeout."""
+    return TrustAssessment(
+        str(uuid.uuid4()),
+        job_id,
+        None,
+        TrustLevel.INSUFFICIENT,
+        False,
+        ("PROVIDER_TIMED_OUT",),
+        ("Yahoo Finance did not respond within the configured request timeout.",),
+        observed_at,
+        (),
+    )

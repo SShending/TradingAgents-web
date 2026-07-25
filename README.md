@@ -176,37 +176,107 @@ drawdown, and benchmark metrics instead of company financial statements. Stock
 and crypto analysis paths remain available with the same symbols and CLI entry
 points.
 
-Install the optional backend and locked frontend dependencies:
+Install the optional backend and locked frontend dependencies from the
+repository root:
 
 ```bash
 python -m pip install -e ".[dev,web]"
 cd web && npm ci && cd ..
 ```
 
-For development, start the API and frontend in separate terminals. Both bind
-locally by default:
+Copy the environment template before using live providers. Keep real keys in
+`.env`; this file is ignored by Git and is never sent to the browser:
 
 ```bash
-TRADINGAGENTS_WEB_DEMO=1 python -m uvicorn tradingagents.web.app:app --host 127.0.0.1 --port 8000
+cp .env.example .env
 ```
+
+#### Recommended: one local production server
+
+The startup script builds the React application and serves both the frontend
+and API from FastAPI on one port:
+
+```bash
+TRADINGAGENTS_WEB_DEMO=1 ./scripts/start-web.sh
+```
+
+Open `http://127.0.0.1:8000`. This is the simplest way to run the complete
+application locally; there is no separate frontend port in this mode.
+
+Demo mode uses deterministic synthetic data and does not call Yahoo Finance or
+an LLM. It is intended for UI development, workflow testing, and evaluating the
+application without provider cost. To use live Yahoo data and the LLM provider
+selected in the UI, configure its key and model settings in `.env`, then start
+without the demo variable:
+
+```bash
+./scripts/start-web.sh
+```
+
+For example, a CIII live configuration needs `CIII_API_KEY`,
+`TRADINGAGENTS_CIII_BASE_URL`, `TRADINGAGENTS_QUICK_THINK_LLM`, and
+`TRADINGAGENTS_DEEP_THINK_LLM`. Configure request, token, and retry limits with
+the `TRADINGAGENTS_BUDGET_*` variables before running paid analysis. Do not put
+keys in `VITE_*` variables because those values are part of the browser build.
+Each Yahoo HTTP request has a 10-second timeout by default. Override it with a
+value greater than 0 and no more than 120 seconds when needed:
+
+```bash
+TRADINGAGENTS_YAHOO_TIMEOUT_SECONDS=15 ./scripts/start-web.sh
+```
+
+Use `Ctrl+C` to stop the foreground server. The default database is
+`~/.tradingagents/web/tradingagents.db`; override it with
+`TRADINGAGENTS_WEB_DB_PATH` when an isolated database is needed.
+
+#### Frontend and backend development servers
+
+For hot reload, run the API and Vite in separate terminals. Start the backend
+from the repository root:
+
+```bash
+# Demo backend; remove TRADINGAGENTS_WEB_DEMO=1 for live providers.
+TRADINGAGENTS_WEB_DEMO=1 python -m uvicorn tradingagents.web.app:app \
+  --host 127.0.0.1 --port 8000
+```
+
+Start the frontend from a second terminal:
 
 ```bash
 cd web
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-Open `http://127.0.0.1:5173`. For a production build served by the API, use one
-command and open `http://127.0.0.1:8000`:
+Open `http://127.0.0.1:5173` in development. Vite serves the frontend on
+`5173` and proxies `/api` to `http://127.0.0.1:8000`; port `8000` remains the
+backend. If the API uses another port, set `VITE_API_TARGET` when starting Vite:
 
 ```bash
-TRADINGAGENTS_WEB_DEMO=1 ./scripts/start-web.sh
+VITE_API_TARGET=http://127.0.0.1:8010 npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-Remove `TRADINGAGENTS_WEB_DEMO=1` for live Yahoo and LLM analysis after
-configuring the selected provider key. The browser never receives provider
-secrets. Jobs, reports, SSE events, formal advice versions, conversations,
-usage, evidence, and trust assessments persist in SQLite across restarts.
-Backup and recovery instructions are in
+#### Docker
+
+After configuring `.env`, build and start the persistent web service with:
+
+```bash
+docker compose up --build tradingagents-web
+```
+
+Open `http://127.0.0.1:8000`. Set `TRADINGAGENTS_WEB_DEMO=1` in `.env` for
+Docker demo mode. SQLite, cache, and report data use named Docker volumes, so
+`docker compose down` does not remove them.
+
+Jobs are persisted before Yahoo is contacted. If Yahoo returns HTTP 429, the
+job is shown as provider-rate-limited; if a request exceeds the configured
+timeout, it is shown as provider-timed-out. Neither state consumes CIII usage.
+The application does not retry automatically: use the explicit **Retry** action
+to create a linked child job when you decide the provider is ready. It does not
+silently treat either provider condition as a missing instrument.
+
+Jobs, reports, SSE events, formal advice versions, conversations, usage,
+evidence, provider cache entries, and trust assessments persist in SQLite
+across restarts. Backup and recovery instructions are in
 [`docs/next-phases/PHASE_2_OPERATIONS.md`](docs/next-phases/PHASE_2_OPERATIONS.md).
 
 Fund field coverage varies by Yahoo instrument. Missing profile, holdings, NAV,

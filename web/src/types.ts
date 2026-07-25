@@ -1,5 +1,23 @@
 export type AssetMode = 'auto' | 'stock' | 'fund' | 'crypto'
-export type JobStatus = 'idle' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelling' | 'cancelled' | 'interrupted' | 'budget_exhausted'
+export type JobStatus = 'idle' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelling' | 'cancelled' | 'interrupted' | 'budget_exhausted' | 'provider_rate_limited' | 'provider_timed_out'
+
+export interface ProviderRateLimitError {
+  code: 'PROVIDER_RATE_LIMITED'
+  message: string
+  provider: string
+  observed_at: string
+  retry_after?: string
+  cache_status: 'hit' | 'miss' | 'expired' | string
+}
+
+export interface ProviderTimeoutError {
+  code: 'PROVIDER_TIMED_OUT'
+  message: string
+  provider: string
+  observed_at: string
+  timeout_seconds: number
+  cache_status: 'hit' | 'miss' | 'expired' | string
+}
 
 export interface Instrument {
   requested_symbol: string
@@ -57,6 +75,8 @@ export interface AnalysisState {
   reports: Record<string, string>
   result?: AnalysisResult
   error?: string
+  providerRateLimit?: ProviderRateLimitError
+  providerTimeout?: ProviderTimeoutError
   reportId?: string
   adviceId?: string
 }
@@ -65,12 +85,22 @@ export interface AnalysisJob {
   job_id: string
   status: JobStatus
   result?: AnalysisResult
-  error?: { code: string; message: string }
+  error?: {
+    code: string
+    message: string
+    provider?: string
+    observed_at?: string
+    retry_after?: string
+    timeout_seconds?: number
+    cache_status?: string
+  }
   report_id?: string
   advice_id?: string
   created_at: string
   updated_at: string
   resumable: boolean
+  retry_of_job_id?: string | null
+  retry_attempt?: number
   request: Record<string, unknown>
 }
 
