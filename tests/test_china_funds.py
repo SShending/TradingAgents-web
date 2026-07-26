@@ -7,7 +7,6 @@ import pytest
 import requests
 
 from tradingagents.china_funds import (
-    ACCEPTANCE_CATALOG,
     AmbiguousFundError,
     ChinaFundService,
     FundAction,
@@ -17,7 +16,7 @@ from tradingagents.china_funds.cache import CachedChinaFundProvider
 from tradingagents.china_funds.domain import TransactionStatus
 from tradingagents.china_funds.eastmoney import EastmoneyFundProvider
 from tradingagents.china_funds.service import default_registry
-from tradingagents.china_funds.synthetic import SyntheticChinaFundProvider
+from tradingagents.china_funds.synthetic import SYNTHETIC_FUNDS, SyntheticChinaFundProvider
 from tradingagents.china_funds.trust import assess_snapshot, relevant_trading_days_between
 from tradingagents.dataflows.errors import ProviderRateLimitedError, ProviderTimedOutError
 from tradingagents.persistence import Database, Repository
@@ -29,21 +28,21 @@ def service():
     return ChinaFundService(default_registry(SyntheticChinaFundProvider()))
 
 
-def test_all_acceptance_funds_resolve_by_code_and_exact_name(service):
-    assert len(ACCEPTANCE_CATALOG) == 20
-    for item in ACCEPTANCE_CATALOG:
-        by_code = service.resolve(item.code)
-        by_name = service.resolve(item.name)
-        assert by_code.code == by_name.code == item.code
-        assert by_code.share_class == item.share_class
+def test_dynamic_provider_results_resolve_by_code_and_exact_name(service):
+    for value in SYNTHETIC_FUNDS.values():
+        by_code = service.resolve(value["code"])
+        by_name = service.resolve(value["display_name"])
+        assert by_code.code == by_name.code == value["code"]
+
+    assert {item["code"] for item in service.search("示例")} == set(SYNTHETIC_FUNDS)
 
 
 def test_partial_name_search_requires_disambiguation_and_share_classes_remain_distinct(service):
     with pytest.raises(AmbiguousFundError) as exc:
-        service.resolve("纳斯达克100")
-    assert len(exc.value.candidates) >= 3
-    a_class = service.resolve("012920")
-    c_class = service.resolve("012922")
+        service.resolve("示例稳健混合")
+    assert len(exc.value.candidates) == 2
+    a_class = service.resolve("900001")
+    c_class = service.resolve("900002")
     assert a_class.code != c_class.code
     assert a_class.share_class != c_class.share_class
     assert a_class.parent_product_id == c_class.parent_product_id
@@ -51,7 +50,7 @@ def test_partial_name_search_requires_disambiguation_and_share_classes_remain_di
 
 def test_snapshot_excludes_future_nav_and_has_deterministic_metrics(service):
     cutoff = "2026-07-22"
-    snapshot = service.snapshot("003516", cutoff)
+    snapshot = service.snapshot("900201", cutoff)
     assert snapshot.nav_history
     assert all(point.date <= cutoff for point in snapshot.nav_history)
     assert {item["name"] for item in snapshot.metrics} == {
@@ -64,7 +63,7 @@ def test_snapshot_excludes_future_nav_and_has_deterministic_metrics(service):
 
 def test_qdii_policy_records_lag_and_never_implies_known_execution_nav(service):
     saturday = date(2026, 7, 25)
-    snapshot = service.snapshot("016453", saturday.isoformat())
+    snapshot = service.snapshot("900101", saturday.isoformat())
     assert snapshot.identity.is_qdii
     assert snapshot.qdii_context["latest_market_move_reflected"] == "unknown"
     assert snapshot.qdii_context["overseas_market_cutoff"] <= saturday.isoformat()
@@ -72,7 +71,7 @@ def test_qdii_policy_records_lag_and_never_implies_known_execution_nav(service):
 
 
 def test_action_gate_blocks_unknown_status_units_fees_and_unconfirmed_conversion(service):
-    snapshot = service.snapshot("003516", date.today().isoformat())
+    snapshot = service.snapshot("900201", date.today().isoformat())
     status = TransactionStatus("closed", "unknown", datetime.now(UTC).isoformat())
     degraded = replace(snapshot, transaction_status=status, fees=())
     degraded = replace(degraded, trust={**snapshot.trust, "executable": True, "level": "trusted"})
@@ -85,8 +84,8 @@ def test_action_gate_blocks_unknown_status_units_fees_and_unconfirmed_conversion
 
 
 def test_conversion_requires_explicit_platform_support(service):
-    snapshot = service.snapshot("012920", date.today().isoformat())
-    target = service.snapshot("012922", date.today().isoformat())
+    snapshot = service.snapshot("900001", date.today().isoformat())
+    target = service.snapshot("900002", date.today().isoformat())
     result = evaluate_actions(
         snapshot,
         intended_action="convert",
@@ -99,14 +98,14 @@ def test_conversion_requires_explicit_platform_support(service):
     )
     assert result.executable
     assert FundAction.CONVERT in result.allowed_actions
-    assert result.target_code == "012922"
+    assert result.target_code == "900002"
     assert result.supporting_evidence
     assert result.friction
 
 
 def test_conversion_rejects_missing_or_unrelated_target_share_class(service):
-    source = service.snapshot("012920", date.today().isoformat())
-    unrelated = service.snapshot("003516", date.today().isoformat())
+    source = service.snapshot("900001", date.today().isoformat())
+    unrelated = service.snapshot("900201", date.today().isoformat())
     context = {
         "intended_action": "convert",
         "confirmed_units": "100",
@@ -122,7 +121,7 @@ def test_conversion_rejects_missing_or_unrelated_target_share_class(service):
 
 
 def test_subscribe_amount_and_partial_redemption_fraction_are_required(service):
-    snapshot = service.snapshot("003516", date.today().isoformat())
+    snapshot = service.snapshot("900201", date.today().isoformat())
     subscribe = evaluate_actions(snapshot, intended_action="subscribe")
     assert "SUBSCRIPTION_AMOUNT_REQUIRED" in subscribe.blocked_actions["subscribe"]
     partial = evaluate_actions(
@@ -135,7 +134,7 @@ def test_subscribe_amount_and_partial_redemption_fraction_are_required(service):
 
 
 def test_missing_holdings_lowers_global_trust_without_blocking_supported_action(service):
-    snapshot = service.snapshot("003516", date.today().isoformat())
+    snapshot = service.snapshot("900201", date.today().isoformat())
     degraded = replace(snapshot, holdings=(), trust={})
     degraded = replace(degraded, trust=assess_snapshot(degraded))
     assert degraded.trust["level"] == "usable_with_warning"
@@ -153,7 +152,7 @@ def test_missing_holdings_lowers_global_trust_without_blocking_supported_action(
 
 
 def test_stale_transaction_status_blocks_transactions_but_not_hold(service):
-    snapshot = service.snapshot("003516", date.today().isoformat())
+    snapshot = service.snapshot("900201", date.today().isoformat())
     stale_status = replace(snapshot.transaction_status, observed_at="2026-01-01T00:00:00+00:00")
     degraded = replace(snapshot, transaction_status=stale_status, trust={})
     degraded = replace(degraded, trust=assess_snapshot(degraded))
@@ -168,7 +167,7 @@ def test_stale_transaction_status_blocks_transactions_but_not_hold(service):
 def test_future_analysis_date_is_rejected_before_provider_access(service):
     future = date.today() + timedelta(days=1)
     with pytest.raises(ValueError, match="cannot be in the future"):
-        service.snapshot("003516", future.isoformat())
+        service.snapshot("900201", future.isoformat())
 
 
 def test_normalized_capability_cache_hit_and_expired_fallback(tmp_path):
@@ -177,8 +176,8 @@ def test_normalized_capability_cache_hit_and_expired_fallback(tmp_path):
     cached_service = ChinaFundService(default_registry(cached_provider))
     cutoff = date.today().isoformat()
 
-    first = cached_service.snapshot("003516", cutoff)
-    second = cached_service.snapshot("003516", cutoff)
+    first = cached_service.snapshot("900201", cutoff)
+    second = cached_service.snapshot("900201", cutoff)
     assert first.capability_status["nav"] == "available"
     assert set(second.capability_status.values()) == {"cached"}
     assert first.evidence[0].retrieved_at == second.evidence[0].retrieved_at
@@ -200,7 +199,7 @@ def test_normalized_capability_cache_hit_and_expired_fallback(tmp_path):
             ((datetime.now(UTC) - timedelta(seconds=1)).isoformat(),),
         )
 
-    expired = cached_service.snapshot("003516", cutoff)
+    expired = cached_service.snapshot("900201", cutoff)
     assert set(expired.capability_status.values()) == {"expired"}
     assert expired.trust["level"] == "insufficient"
     assert not expired.trust["executable"]
@@ -229,17 +228,17 @@ class Response:
 
 
 def test_eastmoney_adapter_parses_dates_status_profile_and_future_cutoff():
-    search = '{"Datas":[{"CODE":"003516","NAME":"国泰融安多策略灵活配置混合A","FundBaseInfo":{"FTYPE":"混合型-灵活","JJGS":"国泰基金","JJJL":"Fixture Manager"}}]}'
+    search = '{"Datas":[{"CODE":"900201","NAME":"示例公开基金A","FundBaseInfo":{"FTYPE":"混合型-灵活","JJGS":"示例基金公司","JJJL":"Fixture Manager"}}]}'
     detail = (
-        'var fS_name="国泰融安多策略灵活配置混合A";'
+        'var fS_name="示例公开基金A";'
         'var fund_sourceRate="1.50";var fund_minsg="10";'
         'var Data_netWorthTrend=[{"x":1784649600000,"y":1.1},{"x":1784822400000,"y":1.2}];'
         "var Data_ACWorthTrend=[[1784649600000,1.1],[1784822400000,1.2]];"
         'var Data_currentFundManager=[{"name":"Fixture Manager"}];'
         'var Data_assetAllocation={"series":[{"name":"股票占净比","data":[80]}],"categories":["2026-06-30"]};'
     )
-    status = 'var db={datas:[["003516","name","x","1","1","1","1","0","0","开放申购","开放赎回"]],count:["1"],showday:["2026-07-24","2026-07-23"]}'
-    profile = '<table class="info w790"><tr><th>最高赎回费率</th><td>1.50%</td><th>业绩比较基准</th><td>沪深300指数收益率*60%</td></tr></table>'
+    status = 'var db={datas:[["900201","name","x","1","1","1","1","0","0","开放申购","开放赎回"]],count:["1"],showday:["2026-07-24","2026-07-23"]}'
+    profile = '<table class="info w790"><tr><th>最高赎回费率</th><td>1.50%</td><th>业绩比较基准</th><td>示例宽基指数收益率*60%</td></tr></table>'
 
     def get(url, **_kwargs):
         if "FundSearch" in url:
@@ -251,13 +250,15 @@ def test_eastmoney_adapter_parses_dates_status_profile_and_future_cutoff():
         return Response(profile)
 
     provider = EastmoneyFundProvider(http_get=get)
-    assert provider.fetch_identity("003516").value["fund_company"] == "国泰基金"
-    nav = provider.fetch_nav("003516", "2026-07-22").value
+    candidates = provider.search_funds("示例公开基金").value
+    assert len(candidates) == 1 and candidates[0]["code"] == "900201"
+    assert provider.fetch_identity("900201").value["fund_company"] == "示例基金公司"
+    nav = provider.fetch_nav("900201", "2026-07-22").value
     assert [point.date for point in nav] == ["2026-07-21"]
-    transaction = provider.fetch_transaction_status("003516").value
+    transaction = provider.fetch_transaction_status("900201").value
     assert transaction.subscription == "开放申购" and transaction.redemption == "开放赎回"
-    assert provider.fetch_benchmark("003516").value.disclosed_text == "沪深300指数收益率*60%"
-    assert provider.fetch_fees("003516").value
+    assert provider.fetch_benchmark("900201").value.disclosed_text == "示例宽基指数收益率*60%"
+    assert provider.fetch_fees("900201").value
 
 
 def test_eastmoney_rate_limit_and_timeout_remain_explicit_provider_failures():
@@ -267,7 +268,7 @@ def test_eastmoney_rate_limit_and_timeout_remain_explicit_provider_failures():
         )
     )
     with pytest.raises(ProviderRateLimitedError) as rate_error:
-        limited.fetch_identity("003516")
+        limited.fetch_identity("900201")
     assert rate_error.value.provider == "eastmoney_public"
     assert rate_error.value.retry_after == "30"
 
@@ -276,7 +277,7 @@ def test_eastmoney_rate_limit_and_timeout_remain_explicit_provider_failures():
 
     timed_out = EastmoneyFundProvider(timeout_seconds=4, http_get=timeout)
     with pytest.raises(ProviderTimedOutError) as timeout_error:
-        timed_out.fetch_nav("003516", date.today().isoformat())
+        timed_out.fetch_nav("900201", date.today().isoformat())
     assert timeout_error.value.provider == "eastmoney_public"
     assert timeout_error.value.timeout_seconds == 4
 
@@ -287,7 +288,7 @@ def test_capability_failure_preserves_other_snapshot_groups():
             raise RuntimeError("fixture capability outage")
 
     service = ChinaFundService(default_registry(PartialProvider()))
-    snapshot = service.snapshot("003516", date.today().isoformat())
+    snapshot = service.snapshot("900201", date.today().isoformat())
     assert snapshot.nav_history
     assert snapshot.transaction_status is not None
     assert snapshot.capability_status["disclosure"] == "unavailable"
@@ -300,7 +301,7 @@ def test_domestic_nav_freshness_threshold_is_trading_day_based(service, lag, exp
     cutoff = date.today()
     while cutoff.weekday() >= 5:
         cutoff -= timedelta(days=1)
-    snapshot = service.snapshot("003516", cutoff.isoformat())
+    snapshot = service.snapshot("900201", cutoff.isoformat())
     latest = cutoff
     counted = 0
     while counted < lag:

@@ -2,7 +2,7 @@
 
 from .actions import evaluate_actions
 from .cache import CachedChinaFundProvider
-from .catalog import ACCEPTANCE_CATALOG, search_catalog
+from .catalog import FUND_CODE, FundMetadata, classify_fund, normalize_name
 from .domain import (
     ChinaFundIdentity,
     ChinaFundSnapshot,
@@ -18,7 +18,6 @@ from .service import AmbiguousFundError, ChinaFundService, FundNotFoundError, de
 from .synthetic import SyntheticChinaFundProvider
 
 __all__ = [
-    "ACCEPTANCE_CATALOG",
     "AmbiguousFundError",
     "CachedChinaFundProvider",
     "ChinaFundIdentity",
@@ -28,6 +27,8 @@ __all__ = [
     "FundAction",
     "FundEvaluation",
     "FundNotFoundError",
+    "FUND_CODE",
+    "FundMetadata",
     "MarketScope",
     "ShareClass",
     "StrategyType",
@@ -35,5 +36,6 @@ __all__ = [
     "VehicleType",
     "evaluate_actions",
     "default_registry",
-    "search_catalog",
+    "classify_fund",
+    "normalize_name",
 ]

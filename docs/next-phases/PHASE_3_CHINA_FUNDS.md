@@ -13,8 +13,8 @@ convert guidance for trusted instruments.
 - Public-provider adapters for profile, NAV history, current transaction status,
   approximate fee rules, manager, holdings/allocation, and benchmark metadata.
 - Deterministic trust rules and field-level provenance.
-- Active mixed/equity, index feeder, ETF feeder, and QDII coverage represented in
-  the confirmed acceptance catalog.
+- Dynamic provider-backed coverage for valid six-digit public-fund codes and
+  provider-returned name candidates.
 - Single-fund operation guidance with short reasons.
 - Special QDII timing and confidence rules.
 - Platform-confirmed conversion support.
@@ -34,7 +34,8 @@ development slice builds a disposable probe and evaluates candidate public
 sources, including open-source public-fund adapters and official manager/
 disclosure pages where available.
 
-The probe must test every acceptance-catalog code and record:
+The probe must test representative capability classes supplied explicitly at
+runtime and record:
 
 ```text
 identity and share class
@@ -55,7 +56,7 @@ Provider selection criteria, in order:
 2. traceable source/disclosure references;
 3. current transaction status;
 4. deterministic historical NAV retrieval;
-5. coverage of the acceptance catalog;
+5. coverage of the requested representative classes;
 6. stable access and maintainable normalization;
 7. holdings/manager/fee completeness.
 
@@ -208,34 +209,14 @@ QDII analysis additionally records:
 QDII advice must not imply a known execution NAV. Missing or stale status lowers
 the result to observation-only.
 
-## Confirmed Acceptance Catalog
+## Runtime Coverage Policy
 
-Every code below must resolve by code and by sufficiently specific name. Data
-coverage may vary. Only instruments passing the trust gate may receive an
-executable operation recommendation.
-
-| Sector | Fund name | Code |
-| --- | --- | --- |
-| Technology / AI | 融通科技臻选混合C | `026539` |
-| Technology / AI | 东方人工智能主题混合C | `017811` |
-| Technology / AI | 博时科技驱动混合C | `021383` |
-| Technology / AI | 平安科技精选混合C | `026211` |
-| Technology / AI | 广发远见智选混合C | `016874` |
-| Technology / AI | 易方达人工智能ETF联接C | `012734` |
-| Technology / AI | 中欧上证科创板人工智能指数C | `026790` |
-| Technology / AI | 中欧中证芯片产业指数C | `020483` |
-| Communications | 国联安优选行业混合 | `257070` |
-| Communications | 天弘中证全指通信设备指数C | `020900` |
-| Manufacturing / Equipment | 永赢高端装备智选混合C | `015790` |
-| Balanced / Multi-strategy | 国泰融安多策略灵活配置混合A | `003516` |
-| US / QDII | 南方纳斯达克100指数(QDII)C | `016453` |
-| US / QDII | 华安纳斯达克100ETF联接(QDII)A | `040046` |
-| US / QDII | 广发全球精选股票(QDII)C | `021277` |
-| US / QDII | 摩根纳斯达克100指数(QDII)A | `019172` |
-| US / QDII | 易方达全球成长精选混合(QDII)A | `012920` |
-| US / QDII | 易方达全球成长精选混合(QDII)C | `012922` |
-| US / QDII | 建信新兴市场优选混合(QDII)C | `018147` |
-| Hong Kong Technology | 汇添富恒生科技ETF联接(QDII)A | `013127` |
+The repository must not contain a user-linked fund watchlist or holding list.
+At runtime, an exact valid six-digit code is resolved through the configured
+provider. Name search returns provider candidates and never silently chooses an
+ambiguous share class. CI uses reserved synthetic identifiers and names that do
+not describe a real user's portfolio. Data coverage may vary; only instruments
+passing the trust gate may receive an executable operation recommendation.
 
 ## API Changes
 
@@ -276,12 +257,12 @@ trust, and the formal advice version when eligible.
 6. Benchmark resolution and QDII calendar/lag rules.
 7. Fund action eligibility and asset-aware agent prompts.
 8. API/UI search, snapshot, trust, sources, and operation advice.
-9. Acceptance-catalog live validation and provider-failure hardening.
+9. Runtime-supplied representative live validation and provider-failure hardening.
 
 ## Test Plan
 
-- Exact code and name resolution for all acceptance entries using recorded,
-  license-safe fixtures or synthetic equivalents.
+- Exact code and name resolution using reserved, license-safe synthetic fixtures.
+- A provider-returned code not checked into a catalog resolves dynamically.
 - Ambiguous names require selection.
 - A/C share classes never merge accidentally.
 - NAV future observations excluded from historical analysis.
@@ -297,8 +278,8 @@ trust, and the formal advice version when eligible.
 
 ## Definition of Done
 
-- All 20 acceptance funds resolve by code and unambiguous name in a live manual
-  validation run.
+- Runtime-supplied representative codes resolve by code and unambiguous name in
+  an opt-in live manual validation run; the code set is not checked in.
 - Each result displays data coverage, provenance, freshness, and trust reasons.
 - At least one representative active fund, feeder/index fund, and QDII fund
   completes a trusted live analysis when public data permits.

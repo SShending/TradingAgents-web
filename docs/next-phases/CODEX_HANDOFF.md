@@ -54,9 +54,9 @@ is merged. Start with the required provider technical spike and checked-in
 coverage matrix; do not assume a public endpoint is stable before probing it.
 Deliver six-digit code/name resolution, share-class identity, capability-based
 public data adapters, provenance/freshness/trust gates, benchmark and QDII rules,
-fund-specific subscribe/hold/redeem/convert advice, API/UI changes, and validation
-of the full 20-fund acceptance catalog. Insufficient critical data must produce
-observation-only research, never an executable list.
+fund-specific subscribe/hold/redeem/convert advice, API/UI changes, and dynamic
+provider-backed resolution without a checked-in user fund list. Insufficient
+critical data must produce observation-only research, never an executable list.
 ```
 
 ## Phase 4 Start Prompt

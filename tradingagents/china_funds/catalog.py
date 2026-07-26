@@ -1,169 +1,114 @@
-"""Confirmed Phase 3 acceptance catalog and deterministic name search."""
+"""Deterministic classification for provider-resolved China public funds."""
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
+from typing import Any
 
 from .domain import MarketScope, ShareClass, StrategyType, VehicleType
 
+FUND_CODE = re.compile(r"\d{6}")
+
 
 @dataclass(frozen=True)
-class CatalogEntry:
+class FundMetadata:
     code: str
     name: str
     vehicle_type: VehicleType
     strategy_type: StrategyType
     market_scope: MarketScope
     share_class: ShareClass
-    sector: str
     parent_product_id: str | None = None
-    aliases: tuple[str, ...] = ()
-
-
-def _entry(
-    code: str,
-    name: str,
-    *,
-    strategy: StrategyType = StrategyType.ACTIVE_MIXED,
-    vehicle: VehicleType = VehicleType.OPEN_END,
-    scope: MarketScope = MarketScope.MAINLAND,
-    share: ShareClass = ShareClass.C,
-    sector: str,
-    parent: str | None = None,
-    aliases: tuple[str, ...] = (),
-) -> CatalogEntry:
-    return CatalogEntry(code, name, vehicle, strategy, scope, share, sector, parent, aliases)
-
-
-ACCEPTANCE_CATALOG: tuple[CatalogEntry, ...] = (
-    _entry(
-        "026539",
-        "融通科技臻选混合C",
-        sector="Technology / AI",
-        aliases=("融通科技臻选混合发起式C",),
-    ),
-    _entry("017811", "东方人工智能主题混合C", sector="Technology / AI"),
-    _entry("021383", "博时科技驱动混合C", sector="Technology / AI"),
-    _entry("026211", "平安科技精选混合C", sector="Technology / AI"),
-    _entry("016874", "广发远见智选混合C", sector="Technology / AI"),
-    _entry(
-        "012734",
-        "易方达人工智能ETF联接C",
-        vehicle=VehicleType.ETF_FEEDER,
-        strategy=StrategyType.INDEX,
-        sector="Technology / AI",
-    ),
-    _entry(
-        "026790",
-        "中欧上证科创板人工智能指数C",
-        vehicle=VehicleType.INDEX_FEEDER,
-        strategy=StrategyType.INDEX,
-        sector="Technology / AI",
-    ),
-    _entry(
-        "020483",
-        "中欧中证芯片产业指数C",
-        vehicle=VehicleType.INDEX_FEEDER,
-        strategy=StrategyType.INDEX,
-        sector="Technology / AI",
-    ),
-    _entry("257070", "国联安优选行业混合", share=ShareClass.OTHER, sector="Communications"),
-    _entry(
-        "020900",
-        "天弘中证全指通信设备指数C",
-        vehicle=VehicleType.INDEX_FEEDER,
-        strategy=StrategyType.INDEX,
-        sector="Communications",
-    ),
-    _entry("015790", "永赢高端装备智选混合C", sector="Manufacturing / Equipment"),
-    _entry(
-        "003516",
-        "国泰融安多策略灵活配置混合A",
-        share=ShareClass.A,
-        sector="Balanced / Multi-strategy",
-    ),
-    _entry(
-        "016453",
-        "南方纳斯达克100指数(QDII)C",
-        vehicle=VehicleType.INDEX_FEEDER,
-        strategy=StrategyType.INDEX,
-        scope=MarketScope.QDII,
-        sector="US / QDII",
-    ),
-    _entry(
-        "040046",
-        "华安纳斯达克100ETF联接(QDII)A",
-        vehicle=VehicleType.ETF_FEEDER,
-        strategy=StrategyType.INDEX,
-        scope=MarketScope.QDII,
-        share=ShareClass.A,
-        sector="US / QDII",
-    ),
-    _entry(
-        "021277",
-        "广发全球精选股票(QDII)C",
-        strategy=StrategyType.ACTIVE_EQUITY,
-        scope=MarketScope.QDII,
-        sector="US / QDII",
-    ),
-    _entry(
-        "019172",
-        "摩根纳斯达克100指数(QDII)A",
-        vehicle=VehicleType.INDEX_FEEDER,
-        strategy=StrategyType.INDEX,
-        scope=MarketScope.QDII,
-        share=ShareClass.A,
-        sector="US / QDII",
-    ),
-    _entry(
-        "012920",
-        "易方达全球成长精选混合(QDII)A",
-        scope=MarketScope.QDII,
-        share=ShareClass.A,
-        sector="US / QDII",
-        parent="ef-global-growth",
-    ),
-    _entry(
-        "012922",
-        "易方达全球成长精选混合(QDII)C",
-        scope=MarketScope.QDII,
-        sector="US / QDII",
-        parent="ef-global-growth",
-    ),
-    _entry("018147", "建信新兴市场优选混合(QDII)C", scope=MarketScope.QDII, sector="US / QDII"),
-    _entry(
-        "013127",
-        "汇添富恒生科技ETF联接(QDII)A",
-        vehicle=VehicleType.ETF_FEEDER,
-        strategy=StrategyType.INDEX,
-        scope=MarketScope.QDII,
-        share=ShareClass.A,
-        sector="Hong Kong Technology",
-    ),
-)
-
-CATALOG_BY_CODE = {item.code: item for item in ACCEPTANCE_CATALOG}
+    provider_fund_type: str | None = None
+    fund_company: str | None = None
+    manager_name: str | None = None
+    currency: str = "CNY"
 
 
 def normalize_name(value: str) -> str:
     return re.sub(r"[\s（）()\-_/·]", "", value).casefold()
 
 
-def search_catalog(query: str) -> list[CatalogEntry]:
-    query = query.strip()
-    if re.fullmatch(r"\d{6}", query):
-        value = CATALOG_BY_CODE.get(query)
-        return [value] if value else []
-    normalized = normalize_name(query)
-    if not normalized:
-        return []
-    exact: list[CatalogEntry] = []
-    partial: list[CatalogEntry] = []
-    for item in ACCEPTANCE_CATALOG:
-        names = (item.name, *item.aliases)
-        if any(normalize_name(name) == normalized for name in names):
-            exact.append(item)
-        elif any(normalized in normalize_name(name) for name in names):
-            partial.append(item)
-    return exact or partial
+def _share_class(name: str) -> ShareClass:
+    match = re.search(r"(?:^|[^A-Za-z])(A|C)(?:类)?$", name.strip(), re.IGNORECASE)
+    if not match:
+        return ShareClass.OTHER
+    return ShareClass.A if match.group(1).upper() == "A" else ShareClass.C
+
+
+def _base_product_name(name: str, share_class: ShareClass) -> str:
+    if share_class == ShareClass.OTHER:
+        return ""
+    return normalize_name(re.sub(r"(?:A|C)(?:类)?$", "", name.strip(), flags=re.IGNORECASE))
+
+
+def _vehicle_type(text: str) -> VehicleType:
+    upper = text.upper()
+    if "ETF联接" in upper or "ETF连接" in upper:
+        return VehicleType.ETF_FEEDER
+    if "LOF" in upper:
+        return VehicleType.LOF
+    if "联接" in text or "连接" in text:
+        return VehicleType.INDEX_FEEDER
+    return VehicleType.OPEN_END
+
+
+def _strategy_type(text: str) -> StrategyType:
+    upper = text.upper()
+    if "FOF" in upper:
+        return StrategyType.FOF
+    if "指数" in text or "ETF" in upper:
+        return StrategyType.INDEX
+    if "股票" in text:
+        return StrategyType.ACTIVE_EQUITY
+    if "混合" in text:
+        return StrategyType.ACTIVE_MIXED
+    if "债" in text:
+        return StrategyType.BOND
+    if "货币" in text:
+        return StrategyType.MONEY
+    return StrategyType.OTHER
+
+
+def _market_scope(text: str) -> MarketScope:
+    upper = text.upper()
+    if "QDII" in upper:
+        return MarketScope.QDII
+    if any(value in text for value in ("香港", "港股", "恒生")):
+        return MarketScope.HONG_KONG
+    if any(value in text for value in ("全球", "海外")):
+        return MarketScope.GLOBAL
+    return MarketScope.MAINLAND
+
+
+def classify_fund(value: dict[str, Any]) -> FundMetadata:
+    code = str(value.get("code") or "").strip()
+    name = str(value.get("display_name") or "").strip()
+    if not FUND_CODE.fullmatch(code) or not name:
+        raise ValueError("Provider returned an invalid China public-fund identity")
+    provider_type = str(value.get("provider_fund_type") or "").strip()
+    combined = f"{name} {provider_type}"
+    share_class = _share_class(name)
+    company = str(value.get("fund_company") or "").strip() or None
+    base_name = _base_product_name(name, share_class)
+    parent_product_id = None
+    if base_name:
+        parent_material = f"{normalize_name(company or '')}|{base_name}"
+        parent_product_id = "provider-name:" + hashlib.sha256(
+            parent_material.encode("utf-8")
+        ).hexdigest()[:20]
+    return FundMetadata(
+        code=code,
+        name=name,
+        vehicle_type=_vehicle_type(combined),
+        strategy_type=_strategy_type(combined),
+        market_scope=_market_scope(combined),
+        share_class=share_class,
+        parent_product_id=parent_product_id,
+        provider_fund_type=provider_type or None,
+        fund_company=company,
+        manager_name=str(value.get("manager_name") or "").strip() or None,
+        currency=str(value.get("currency") or "CNY"),
+    )

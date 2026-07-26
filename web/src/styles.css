@@ -61,7 +61,7 @@ fieldset legend { grid-column:1 / -1; }
 .summary-band small,.metric small { color:#83908b; font-size:10px; }
 .capitalize { text-transform:capitalize; }
 .notice { display:flex; gap:9px; align-items:center; min-height:44px; border:1px solid #e4d2ae; border-left:3px solid #c68a31; background:#fffaf0; padding:9px 12px; margin-top:12px; font-size:12px; }
-.notice p { margin:0; flex:1; }
+.notice p { margin:0; flex:1; min-width:0; overflow-wrap:anywhere; }
 .error-notice { border-color:#e4bbb6; border-left-color:var(--red); background:#fff5f4; }
 .error-notice div { flex:1; }
 .error-notice p { margin:2px 0 0; }

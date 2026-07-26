@@ -118,13 +118,22 @@ class EastmoneyFundProvider:
         response.encoding = response.apparent_encoding or response.encoding or "utf-8"
         return response.text.lstrip("\ufeff"), observed
 
-    def _search(self, code: str) -> tuple[dict[str, Any], str, str]:
-        content, observed = self._get(SEARCH_URL, params={"m": "1", "key": code})
+    def _search_candidates(self, query: str) -> tuple[list[dict[str, Any]], str, str]:
+        content, observed = self._get(SEARCH_URL, params={"m": "1", "key": query})
         payload = json.loads(content)
-        candidates = [item for item in payload.get("Datas") or [] if item.get("CODE") == code]
-        if not candidates:
-            return {}, content, observed
-        return candidates[0], content, observed
+        return list(payload.get("Datas") or []), content, observed
+
+    @staticmethod
+    def _identity_value(item: dict[str, Any]) -> dict[str, Any]:
+        base = item.get("FundBaseInfo") or {}
+        return {
+            "code": str(item.get("CODE") or ""),
+            "display_name": item.get("NAME") or base.get("SHORTNAME"),
+            "provider_fund_type": base.get("FTYPE"),
+            "fund_company": base.get("JJGS"),
+            "manager_name": base.get("JJJL"),
+            "currency": "CNY",
+        }
 
     def _detail(self, code: str) -> tuple[str, str]:
         return self._get(DETAIL_URL.format(code=code))
@@ -133,19 +142,33 @@ class EastmoneyFundProvider:
         content, observed = self._get(PROFILE_URL.format(code=code))
         return _profile_fields(content), content, observed
 
+    def search_funds(self, query: str) -> CapabilityResult:
+        candidates, content, observed = self._search_candidates(query)
+        values = tuple(
+            value
+            for item in candidates
+            if (value := self._identity_value(item))["code"]
+            and value["display_name"]
+        )
+        reference = SEARCH_URL
+        evidence = (
+            _evidence(
+                "identity.search_results",
+                [value["code"] for value in values],
+                reference=reference,
+                retrieved_at=observed,
+                effective_at=observed[:10],
+                raw_hash=_hash(content),
+            ),
+        )
+        return CapabilityResult(values, evidence)
+
     def fetch_identity(self, code: str) -> CapabilityResult:
-        item, content, observed = self._search(code)
-        if not item:
+        candidates, content, observed = self._search_candidates(code)
+        item = next((item for item in candidates if str(item.get("CODE")) == code), None)
+        if item is None:
             return CapabilityResult(None)
-        base = item.get("FundBaseInfo") or {}
-        value = {
-            "code": code,
-            "display_name": item.get("NAME") or base.get("SHORTNAME"),
-            "provider_fund_type": base.get("FTYPE"),
-            "fund_company": base.get("JJGS"),
-            "manager_name": base.get("JJJL"),
-            "currency": "CNY",
-        }
+        value = self._identity_value(item)
         reference = f"{SEARCH_URL}?m=1&key={code}"
         evidence = tuple(
             _evidence(

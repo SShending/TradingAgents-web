@@ -116,28 +116,28 @@ def test_backup_restore_round_trip_and_preview_rejections(tmp_path):
 def test_china_fund_snapshot_and_advice_round_trip(tmp_path):
     repository = Repository(Database(tmp_path / "workspace.sqlite3"))
     snapshot = {
-        "identity": {"code": "003516", "display_name": "国泰融安多策略灵活配置混合A"},
+        "identity": {"code": "900201", "display_name": "示例公开基金A"},
         "analysis_date": "2026-07-25",
         "retrieved_at": utc_now(),
         "trust": {"level": "trusted", "critical_ready": True},
         "warnings": [],
     }
     persisted = repository.save_china_fund_snapshot(snapshot)
-    assert repository.latest_china_fund_snapshot("003516")["snapshot"] == snapshot
+    assert repository.latest_china_fund_snapshot("900201")["snapshot"] == snapshot
 
     first = repository.create_china_fund_advice(
         persisted["id"],
-        "003516",
+        "900201",
         {"action": "hold", "confidence": "high", "reason": "Current", "executable": True},
     )
     second = repository.create_china_fund_advice(
         persisted["id"],
-        "003516",
+        "900201",
         {"action": "subscribe", "confidence": "medium", "reason": "Open", "executable": True},
         parent_id=first["id"],
     )
     assert second["version"] == 2 and second["parent_id"] == first["id"]
-    assert repository.list_china_fund_advice("003516") == [first, second]
+    assert repository.list_china_fund_advice("900201") == [first, second]
 
 
 def test_backup_list_is_newest_first(tmp_path):

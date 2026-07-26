@@ -10,9 +10,32 @@ from datetime import UTC, date, datetime, timedelta
 
 from tradingagents.domain import EvidenceField
 
-from .catalog import CATALOG_BY_CODE
+from .catalog import classify_fund, normalize_name
 from .domain import Benchmark, FeeRule, Holding, NavPoint, TransactionStatus
 from .providers import CapabilityResult
+
+SYNTHETIC_FUNDS = {
+    "900001": {
+        "code": "900001",
+        "display_name": "示例稳健混合A",
+        "provider_fund_type": "混合型",
+    },
+    "900002": {
+        "code": "900002",
+        "display_name": "示例稳健混合C",
+        "provider_fund_type": "混合型",
+    },
+    "900101": {
+        "code": "900101",
+        "display_name": "示例全球指数(QDII)C",
+        "provider_fund_type": "QDII-指数型",
+    },
+    "900201": {
+        "code": "900201",
+        "display_name": "示例债券基金A",
+        "provider_fund_type": "债券型",
+    },
+}
 
 
 class SyntheticChinaFundProvider:
@@ -38,17 +61,40 @@ class SyntheticChinaFundProvider:
             (),
         )
 
-    def fetch_identity(self, code: str) -> CapabilityResult:
-        item = CATALOG_BY_CODE.get(code)
-        if not item:
-            return CapabilityResult(None)
-        value = {
-            "code": code,
-            "display_name": item.name,
+    @staticmethod
+    def _identity(code: str):
+        item = SYNTHETIC_FUNDS.get(code)
+        if item is None:
+            return None
+        return {
+            **item,
             "currency": "CNY",
             "fund_company": "Synthetic Fund Manager",
             "manager_name": "Fixture Manager",
         }
+
+    def search_funds(self, query: str) -> CapabilityResult:
+        normalized = normalize_name(query)
+        values = tuple(
+            value
+            for code in SYNTHETIC_FUNDS
+            if (value := self._identity(code)) is not None
+            and (query == code or normalized in normalize_name(value["display_name"]))
+        )
+        evidence = (
+            self._evidence(
+                "identity.search_results",
+                [value["code"] for value in values],
+                "search",
+                date.today().isoformat(),
+            ),
+        )
+        return CapabilityResult(values, evidence, cache_status="fixture")
+
+    def fetch_identity(self, code: str) -> CapabilityResult:
+        value = self._identity(code)
+        if value is None:
+            return CapabilityResult(None)
         return CapabilityResult(
             value,
             (self._evidence("identity", value, code, date.today().isoformat()),),
@@ -125,7 +171,7 @@ class SyntheticChinaFundProvider:
         )
 
     def fetch_benchmark(self, code: str) -> CapabilityResult:
-        item = CATALOG_BY_CODE[code]
+        item = classify_fund(self._identity(code) or {})
         name = (
             "Nasdaq 100 Total Return"
             if item.market_scope.value == "qdii"

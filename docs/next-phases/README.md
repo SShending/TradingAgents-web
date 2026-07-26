@@ -90,6 +90,7 @@ execution.
 ## Stage Gates
 
 Phase 2 must be complete before a China-fund provider is integrated. Phase 3
-must resolve and trust-gate the confirmed acceptance catalog before portfolio
-advice can use those funds. Phase 4 must derive holdings from confirmed ledger
-entries rather than creating a second mutable position store.
+must dynamically resolve and trust-gate provider-backed public funds without a
+checked-in user fund list before portfolio advice can use those funds. Phase 4
+must derive holdings from confirmed ledger entries rather than creating a
+second mutable position store.

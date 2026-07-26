@@ -1,4 +1,4 @@
-"""Bounded, opt-in public capability probe for the Phase 3 acceptance catalog.
+"""Bounded, opt-in public capability probe for runtime-supplied fund codes.
 
 The probe never sends credentials, retries requests, or writes provider payloads.
 It prints normalized capability coverage only so maintainers can refresh the
@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from datetime import date
 from typing import Any
 
 import requests
 
-from tradingagents.china_funds.catalog import ACCEPTANCE_CATALOG
 from tradingagents.china_funds.eastmoney import EastmoneyFundProvider
 
 
@@ -79,15 +79,22 @@ def probe(code: str, analysis_date: str, timeout_seconds: float) -> dict[str, An
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "codes",
+        nargs="+",
+        help="representative six-digit codes; values are not written to the repository",
+    )
     parser.add_argument("--analysis-date", default=date.today().isoformat())
     parser.add_argument("--timeout", type=float, default=8.0)
     parser.add_argument("--json", action="store_true", help="emit one normalized JSON document")
     args = parser.parse_args()
     if args.timeout <= 0 or args.timeout > 30:
         parser.error("--timeout must be greater than zero and no more than 30 seconds")
+    if any(re.fullmatch(r"\d{6}", code) is None for code in args.codes):
+        parser.error("every code must contain exactly six digits")
     date.fromisoformat(args.analysis_date)
 
-    rows = [probe(item.code, args.analysis_date, args.timeout) for item in ACCEPTANCE_CATALOG]
+    rows = [probe(code, args.analysis_date, args.timeout) for code in dict.fromkeys(args.codes)]
     if args.json:
         print(json.dumps({"analysis_date": args.analysis_date, "items": rows}, ensure_ascii=False))
         return 0

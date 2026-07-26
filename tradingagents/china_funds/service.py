@@ -10,7 +10,7 @@ from typing import Any
 from tradingagents.persistence import Repository
 
 from .actions import evaluate_actions
-from .catalog import CatalogEntry, search_catalog
+from .catalog import FUND_CODE, FundMetadata, classify_fund, normalize_name
 from .domain import ChinaFundIdentity, ChinaFundSnapshot
 from .providers import CAPABILITIES, ProviderRegistry
 from .trust import assess_snapshot
@@ -21,7 +21,7 @@ class FundNotFoundError(LookupError):
 
 
 class AmbiguousFundError(ValueError):
-    def __init__(self, candidates: list[CatalogEntry]):
+    def __init__(self, candidates: list[FundMetadata]):
         self.candidates = candidates
         super().__init__("Fund name is ambiguous; select one share-class code")
 
@@ -73,31 +73,66 @@ class ChinaFundService:
         self.repository = repository
 
     def search(self, query: str) -> list[dict[str, Any]]:
-        return [self._catalog_json(item) for item in search_catalog(query)]
+        clean = query.strip()
+        if not clean:
+            return []
+        if len(clean) > 100:
+            raise ValueError("Fund search query is too long")
+        result = self.registry.fetch(
+            "identity", lambda provider: provider.search_funds(clean)
+        )
+        candidates: dict[str, FundMetadata] = {}
+        for value in result.value or ():
+            try:
+                item = classify_fund(value)
+            except ValueError:
+                continue
+            candidates.setdefault(item.code, item)
+        return [self._catalog_json(item) for item in candidates.values()]
 
     def resolve(self, query: str) -> ChinaFundIdentity:
         identity, _result = self._resolve_with_result(query)
         return identity
 
     def _resolve_with_result(self, query: str):
-        candidates = search_catalog(query)
-        if not candidates:
-            raise FundNotFoundError(query)
-        if len(candidates) > 1:
-            raise AmbiguousFundError(candidates)
-        entry = candidates[0]
+        clean = query.strip()
+        if not clean or len(clean) > 100:
+            raise ValueError("Fund code or name is required")
+        code = clean if FUND_CODE.fullmatch(clean) else None
+        if code is None:
+            search_result = self.registry.fetch(
+                "identity", lambda provider: provider.search_funds(clean)
+            )
+            candidates: dict[str, FundMetadata] = {}
+            for value in search_result.value or ():
+                try:
+                    item = classify_fund(value)
+                except ValueError:
+                    continue
+                candidates.setdefault(item.code, item)
+            exact = [
+                item for item in candidates.values() if normalize_name(item.name) == normalize_name(clean)
+            ]
+            selected = exact or list(candidates.values())
+            if not selected:
+                raise FundNotFoundError(query)
+            if len(selected) > 1:
+                raise AmbiguousFundError(selected)
+            code = selected[0].code
         result = self.registry.fetch(
-            "identity", lambda provider: provider.fetch_identity(entry.code)
+            "identity", lambda provider: provider.fetch_identity(code)
         )
-        provider_value = result.value or {}
+        if not result.value:
+            raise FundNotFoundError(query)
+        provider_value = result.value
+        entry = classify_fund(provider_value)
         warnings = list(result.warnings)
         if not result.evidence:
             warnings.append("IDENTITY_PROVIDER_UNAVAILABLE")
-        if provider_value.get("display_name") and provider_value["display_name"] not in {
-            entry.name,
-            *entry.aliases,
-        }:
-            warnings.append("PROVIDER_NAME_DIFFERS_FROM_ACCEPTANCE_CATALOG")
+        if entry.parent_product_id:
+            warnings.append(
+                "The share-class relationship was derived from the provider name and fund company."
+            )
         identity = ChinaFundIdentity(
             entry.code,
             entry.name,
@@ -106,10 +141,10 @@ class ChinaFundService:
             entry.strategy_type,
             entry.market_scope,
             entry.parent_product_id,
-            str(provider_value.get("currency") or "CNY"),
-            manager_name=provider_value.get("manager_name"),
-            fund_company=provider_value.get("fund_company"),
-            tags=(entry.sector,),
+            entry.currency,
+            manager_name=entry.manager_name,
+            fund_company=entry.fund_company,
+            tags=(entry.provider_fund_type,) if entry.provider_fund_type else (),
             evidence=result.evidence,
             warnings=tuple(dict.fromkeys(warnings)),
         )
@@ -225,7 +260,7 @@ class ChinaFundService:
         )
 
     @staticmethod
-    def _catalog_json(item: CatalogEntry) -> dict[str, Any]:
+    def _catalog_json(item: FundMetadata) -> dict[str, Any]:
         return {
             "code": item.code,
             "display_name": item.name,
@@ -234,7 +269,7 @@ class ChinaFundService:
             "strategy_type": item.strategy_type,
             "market_scope": item.market_scope,
             "parent_product_id": item.parent_product_id,
-            "tags": [item.sector],
+            "tags": [item.provider_fund_type] if item.provider_fund_type else [],
         }
 
 

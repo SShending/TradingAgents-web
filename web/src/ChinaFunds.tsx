@@ -11,7 +11,7 @@ const humanize = (value: string) => value.replaceAll('_', ' ')
 
 export default function ChinaFunds({ onUse }: { onUse: (candidate: ChinaFundCandidate, instrument: Instrument) => void }) {
   const { t } = useTranslation()
-  const [query, setQuery] = useState('003516')
+  const [query, setQuery] = useState('')
   const [candidates, setCandidates] = useState<ChinaFundCandidate[]>([])
   const [snapshot, setSnapshot] = useState<ChinaFundSnapshot>()
   const [action, setAction] = useState('hold')

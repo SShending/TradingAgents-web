@@ -449,7 +449,10 @@ def create_app(
 
     @app.get("/api/funds/search")
     def search_funds(q: str):
-        return {"items": china_funds.search(q)}
+        try:
+            return {"items": china_funds.search(q)}
+        except Exception as exc:
+            raise fund_error(exc) from exc
 
     @app.post("/api/funds/resolve")
     def resolve_fund(body: ChinaFundResolveRequest):

@@ -15,18 +15,18 @@ beforeEach(() => {
   vi.stubGlobal('EventSource', FakeEventSource)
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
-    if (url.includes('/api/funds/search')) return new Response(JSON.stringify({ items: [{ code:'016453', display_name:'南方纳斯达克100指数(QDII)C', share_class:'C', vehicle_type:'index_feeder', strategy_type:'index', market_scope:'qdii', tags:['US / QDII'] }] }), { status: 200 })
-    if (url.includes('/api/funds/016453/snapshot')) return new Response(JSON.stringify({
-      identity: { code:'016453', display_name:'南方纳斯达克100指数(QDII)C', share_class:'C', vehicle_type:'index_feeder', strategy_type:'index', market_scope:'qdii', currency:'CNY', tags:['US / QDII'], warnings:[] },
+    if (url.includes('/api/funds/search')) return new Response(JSON.stringify({ items: [{ code:'900101', display_name:'示例全球指数(QDII)C', share_class:'C', vehicle_type:'index_feeder', strategy_type:'index', market_scope:'qdii', tags:['US / QDII'] }] }), { status: 200 })
+    if (url.includes('/api/funds/900101/snapshot')) return new Response(JSON.stringify({
+      identity: { code:'900101', display_name:'示例全球指数(QDII)C', share_class:'C', vehicle_type:'index_feeder', strategy_type:'index', market_scope:'qdii', currency:'CNY', tags:['US / QDII'], warnings:[] },
       analysis_date:'2026-07-25', retrieved_at:'2026-07-25T08:00:00+00:00',
       nav_history:[{date:'2026-07-23', nav:'1.0100'},{date:'2026-07-24', nav:'1.0200'}],
       transaction_status:{subscription:'开放申购', redemption:'开放赎回', observed_at:'2026-07-25T08:00:00+00:00'},
       fees:[], metrics:[{name:'total_return',value:0.01,unit:'percent'}], evidence:[{name:'nav_history',value:'available',source_reference:'fixture://fund/nav',retrieved_at:'2026-07-25T08:00:00+00:00',effective_at:'2026-07-24',freshness_status:'fresh',normalization_warnings:[]}], warnings:[], capability_status:{identity:'available',nav:'available'},
       qdii_context:{latest_market_move_reflected:'unknown'}, trust:{level:'trusted',executable:true,critical_ready:true,reason_codes:['QDII_DATA_LAG'],warnings:['QDII NAV publication lag is disclosed.'],nav_lag_trading_days:1},
     }), { status: 200 })
-    if (url.includes('/api/funds/016453/evaluate')) return new Response(JSON.stringify({
-      snapshot: { identity: { code:'016453', display_name:'南方纳斯达克100指数(QDII)C', share_class:'C', vehicle_type:'index_feeder', strategy_type:'index', market_scope:'qdii', currency:'CNY', tags:['US / QDII'], warnings:[] }, analysis_date:'2026-07-25', retrieved_at:'2026-07-25T08:00:00+00:00', nav_history:[], transaction_status:{subscription:'开放申购',redemption:'开放赎回',observed_at:'2026-07-25T08:00:00+00:00'}, fees:[], metrics:[], evidence:[], warnings:[], capability_status:{identity:'available'}, qdii_context:{}, trust:{level:'trusted',executable:true,critical_ready:true,reason_codes:[],warnings:[]} },
-      evaluation:{code:'016453',action:'subscribe',allowed_actions:['subscribe'],blocked_actions:{},executable:true,confidence:'high',reason:'Subscription is open and critical data is current.',warnings:[]}, formal_advice:{version:1},
+    if (url.includes('/api/funds/900101/evaluate')) return new Response(JSON.stringify({
+      snapshot: { identity: { code:'900101', display_name:'示例全球指数(QDII)C', share_class:'C', vehicle_type:'index_feeder', strategy_type:'index', market_scope:'qdii', currency:'CNY', tags:['US / QDII'], warnings:[] }, analysis_date:'2026-07-25', retrieved_at:'2026-07-25T08:00:00+00:00', nav_history:[], transaction_status:{subscription:'开放申购',redemption:'开放赎回',observed_at:'2026-07-25T08:00:00+00:00'}, fees:[], metrics:[], evidence:[], warnings:[], capability_status:{identity:'available'}, qdii_context:{}, trust:{level:'trusted',executable:true,critical_ready:true,reason_codes:[],warnings:[]} },
+      evaluation:{code:'900101',action:'subscribe',allowed_actions:['subscribe'],blocked_actions:{},executable:true,confidence:'high',reason:'Subscription is open and critical data is current.',warnings:[]}, formal_advice:{version:1},
     }), { status: 200 })
     if (url.includes('/config/options')) return new Response(JSON.stringify({ budget: { limits: { max_requests_per_analysis: 10, max_total_tokens_per_analysis: 1000 }, historical_estimate: null, monetary_estimate: 'unknown', daily_usage: { requests: 0, tokens: 0 } } }), { status: 200 })
     if (url.includes('/resolve')) return new Response(JSON.stringify({ requested_symbol:'SPY', canonical_symbol:'SPY', asset_type:'fund', fund_type:'etf', quote_type:'ETF', name:'SPDR S&P 500 ETF Trust', exchange:'PCX', currency:'USD', warnings:[] }), { status: 200 })
@@ -96,8 +96,8 @@ it('renders a China fund search, QDII warning, and deterministic operation resul
   render(<App />)
   fireEvent.click(screen.getByRole('button', { name: 'China Funds' }))
   fireEvent.click(screen.getByRole('button', { name: 'Search' }))
-  await screen.findByText('南方纳斯达克100指数(QDII)C')
-  fireEvent.click(screen.getByRole('button', { name: /南方纳斯达克100指数/ }))
+  await screen.findByText('示例全球指数(QDII)C')
+  fireEvent.click(screen.getByRole('button', { name: /示例全球指数/ }))
   await screen.findByText('QDII published NAV can lag overseas markets. The displayed move is not an execution NAV.')
   fireEvent.change(screen.getByLabelText('Fund action'), { target: { value: 'subscribe' } })
   fireEvent.change(screen.getByLabelText('Subscription amount'), { target: { value: '1000' } })
@@ -105,5 +105,5 @@ it('renders a China fund search, QDII warning, and deterministic operation resul
   await screen.findByText('Executable proposal')
   expect(screen.getByText('Formal advice version 1 recorded.')).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Use in analysis' }))
-  expect(screen.getByLabelText('Symbol')).toHaveValue('016453')
+  expect(screen.getByLabelText('Symbol')).toHaveValue('900101')
 })

@@ -141,6 +141,12 @@ class CachedChinaFundProvider:
             "expired" if expired else "hit",
         )
 
+    def search_funds(self, query: str) -> CapabilityResult:
+        # Search results are intentionally not persisted. A query can reveal user
+        # interest even when no analysis is created; exact selected identities are
+        # cached only after the user selects a fund.
+        return self.provider.search_funds(query)
+
     def fetch_identity(self, code: str) -> CapabilityResult:
         return self._fetch("identity", code, {}, lambda: self.provider.fetch_identity(code))
 

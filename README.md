@@ -176,12 +176,14 @@ drawdown, and benchmark metrics instead of company financial statements. Stock
 and crypto analysis paths remain available with the same symbols and CLI entry
 points.
 
-The **China Funds** workspace covers the Phase 3 catalog of 20 mainland,
-Hong Kong, and QDII public-fund share classes. It resolves exact six-digit codes
-or names, keeps A/C share classes distinct, retrieves normalized Eastmoney
-public data in live mode, and shows field evidence, freshness, trust, NAV
-history, transaction status, fee inputs, and deterministic subscribe/hold/
-redeem/convert eligibility. Demo mode uses checked-in synthetic observations.
+The **China Funds** workspace dynamically resolves valid six-digit mainland,
+Hong Kong, and QDII public-fund share classes through the configured provider.
+It supports code or provider-backed name search, keeps A/C share classes
+distinct, retrieves normalized Eastmoney public data in live mode, and shows
+field evidence, freshness, trust, NAV history, transaction status, fee inputs,
+and deterministic subscribe/hold/redeem/convert eligibility. Demo mode uses
+reserved synthetic identifiers and observations; no user fund list is checked
+into the repository.
 
 Install the optional backend and locked frontend dependencies from the
 repository root:

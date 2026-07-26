@@ -397,6 +397,7 @@ const zh = {
   'Opposing evidence': '反对证据',
   'Friction': '费用与操作摩擦',
   'Latest holdings are unavailable; no values were inferred.': '最新持仓不可用；系统未推断或补造任何数值。',
+  'The share-class relationship was derived from the provider name and fund company.': '同一产品的份额关系由数据源名称和基金公司推导。',
   'Relative benchmark metrics are unavailable; no benchmark was invented.': '相对基准指标不可用；系统未虚构业绩基准。',
   'Subscription is open and critical data is current.': '申购状态开放，且该操作所需关键数据有效。',
   'No transaction is required; monitor the stated re-evaluation triggers.': '当前无需交易；请持续关注已列出的重新评估条件。',

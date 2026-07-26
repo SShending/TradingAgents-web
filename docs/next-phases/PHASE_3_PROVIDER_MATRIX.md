@@ -9,8 +9,8 @@ payloads, private conversations, credentials, or live fund observations.
 | Candidate | Selection | Reason | Scope |
 | --- | --- | --- | --- |
 | Eastmoney public fund pages | Selected | It exposes code search, dated NAV history, purchase/redemption labels, fund profile, approximate fees, disclosed benchmark text, manager, and allocation fields in one public source. | Live local mode |
-| Synthetic Phase 3 fixture | Test/demo only | Covers every acceptance-catalog share class with deterministic evidence, dates, and partial-failure cases. | CI, tests, local demo |
-| A second public provider | Deferred | Multiple-provider selection is not needed for the validated Phase 3 boundary and would broaden the provider surface. | Not implemented |
+| Synthetic Phase 3 fixture | Test/demo only | Covers representative share classes with deterministic evidence, dates, and partial-failure cases. | CI, tests, local demo |
+| A second public provider | Deferred | Multiple-provider selection would broaden the validated Phase 3 provider surface. | Not implemented |
 
 The adapter confines endpoint parsing to `tradingagents/china_funds/eastmoney.py`.
 No application code rotates proxies, disguises user agents, or retries a provider
@@ -39,9 +39,10 @@ NAV, or current transaction-status execution gate.
 
 ## Validation Boundary
 
-- The acceptance catalog has 20 checked-in code/name fixtures. CI validates code
-  resolution, unambiguous name resolution, A/C separation, QDII context, and
-  provider capability degradation without a real network call.
+- No user-linked fund list is checked in. CI uses reserved synthetic identifiers
+  to validate dynamic code resolution, unambiguous name resolution, A/C
+  separation, QDII context, and provider capability degradation without a real
+  network call.
 - Live validation is manual and opt-in because public provider availability,
   terms, throttling, and coverage may change. A live failure is recorded as a
   provider limitation, never converted into an invented fund value.
@@ -51,29 +52,15 @@ NAV, or current transaction-status execution gate.
   app therefore does not claim to know whether an intraday overseas move is in
   the next published NAV.
 
-Run the bounded manual matrix with:
+Run a bounded manual probe by supplying representative codes at runtime:
 
 ```bash
-python scripts/probe_china_funds.py --analysis-date YYYY-MM-DD --timeout 8
+python scripts/probe_china_funds.py CODE [CODE ...] --analysis-date YYYY-MM-DD --timeout 8
 ```
 
-The command makes at most four public requests per acceptance code in one
-process, reuses only in-memory responses for the remaining capability parsers,
-and prints no provider payloads.
-
-## Live Probe Record
-
-A bounded live run on 2026-07-25 covered all 20 acceptance-catalog codes with
-an eight-second per-request timeout, no retry loop, and no credentials. All 20
-returned identity, dated NAV history, current transaction labels, manager,
-asset allocation, approximate fee data, and disclosed benchmark text without a
-capability exception. NAV history lengths ranged from 46 to 3,672 normalized
-points; the latest effective dates were 2026-07-22 or 2026-07-23, including the
-expected QDII publication lag.
-
-The same run returned no normalized holding rows for any acceptance code.
-Holdings coverage is therefore an unresolved provider limitation. The adapter
-keeps holdings unavailable and the trust layer adds `HOLDINGS_UNAVAILABLE`; it
-does not infer constituents from a fund name, benchmark, or allocation chart.
-This result records reachability at the observation time, not a promise of
-future provider availability.
+The command makes at most four public requests per supplied code in one process,
+reuses only in-memory responses for the remaining capability parsers, and prints
+no provider payloads. Probe code sets and observations are not committed because
+they can reveal a user's research interests or holdings. Public holdings remain
+a provider limitation: unavailable rows stay missing and the trust layer adds
+`HOLDINGS_UNAVAILABLE` rather than inferring constituents.
